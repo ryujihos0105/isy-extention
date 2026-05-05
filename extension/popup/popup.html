@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>
+        <span class="brand-mark">ISY</span>
+        <span class="brand-full">I See You</span>
+      </h1>
+      <p>AI 생성 가능성을 빠르게 검토합니다.</p>
+    </header>
+
+    <section id="adapter-info" class="adapter-info" aria-label="현재 사이트">
+      <span class="adapter-label">현재 사이트</span>
+      <strong id="adapter-name">감지 중...</strong>
+    </section>
+
+    <section id="results-summary" class="results-summary hidden" aria-label="분석 결과 요약">
+      <button id="focus-high-btn" class="result-item high-item" type="button" aria-label="AI 가능성 높은 콘텐츠로 이동">
+        <span class="result-label">가능성 높음</span>
+        <span id="high-count" class="result-count high-count">0</span>
+      </button>
+      <div class="result-divider"></div>
+      <button id="focus-low-btn" class="result-item low-item" type="button" aria-label="AI 가능성 낮은 콘텐츠로 이동">
+        <span class="result-label">가능성 낮음</span>
+        <span id="low-count" class="result-count low-count">0</span>
+      </button>
+      <div class="result-divider"></div>
+      <button id="focus-failed-btn" class="result-item failed-item" type="button" aria-label="분석 실패 콘텐츠로 이동">
+        <span class="result-label">실패</span>
+        <span id="failed-count" class="result-count failed-count">0</span>
+      </button>
+    </section>
+
+    <div id="summary-note" class="summary-note hidden"></div>
+
+    <main class="actions">
+      <button id="analyze-all-btn" class="primary" aria-label="현재 페이지의 콘텐츠 분석">
+        현재 페이지 분석
+      </button>
+      <button id="scan-btn" class="secondary" aria-label="분석 가능한 콘텐츠 개수 확인">
+        분석 가능 항목 확인
+      </button>
+    </main>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

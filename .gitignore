@@ -1,0 +1,32 @@
+# Python caches / local runtime artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+
+# ML model artifacts
+*.pt
+*.pth
+*.onnx
+*.pkl
+*.joblib
+
+# Logs / temporary files
+*.log
+*.tmp
+*.temp
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

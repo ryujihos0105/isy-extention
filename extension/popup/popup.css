@@ -1,0 +1,235 @@
+:root {
+  --bg: #0d1117;
+  --panel: #171d26;
+  --panel-strong: #202938;
+  --text: #f8fafc;
+  --muted: #98a2b3;
+  --line: #303a4a;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --high: #f97316;
+  --low: #14b8a6;
+  --failed: #94a3b8;
+}
+
+body {
+  width: 320px;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.25), transparent 36%),
+    linear-gradient(180deg, #101827 0%, var(--bg) 100%);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.container { padding: 16px; }
+
+.header h1 {
+  margin: 0 0 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.brand-mark {
+  font-size: 23px;
+  font-weight: 850;
+  letter-spacing: 0.8px;
+  color: #ffffff;
+}
+
+.brand-full {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+}
+
+.header p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+.adapter-info {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  background: rgba(23, 29, 38, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+.adapter-label { color: var(--muted); }
+
+.adapter-info strong {
+  color: #bfdbfe;
+  font-weight: 700;
+  text-align: right;
+}
+
+.results-summary {
+  display: flex;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 12px 8px;
+  margin-bottom: 8px;
+}
+
+.hidden { display: none !important; }
+
+.result-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 8px;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.result-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.result-item:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.result-item:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.result-item:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.result-label {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.result-count {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.high-count { color: var(--high); }
+.low-count { color: var(--low); }
+.failed-count { color: var(--failed); }
+
+.result-divider {
+  width: 1px;
+  height: 36px;
+  background: var(--line);
+}
+
+.summary-note {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actions button {
+  color: white;
+  border: none;
+  padding: 11px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s, filter 0.1s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.actions button:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.actions button:active:not(:disabled) {
+  transform: scale(0.98);
+  filter: brightness(0.95);
+}
+
+.actions button.primary {
+  background: var(--primary);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
+}
+
+.actions button.primary:hover:not(:disabled) { background: var(--primary-hover); }
+
+.actions button.secondary {
+  background: var(--panel-strong);
+  color: #dbe4f0;
+}
+
+.actions button.secondary:hover:not(:disabled) {
+  background: #2a3445;
+}
+
+.actions button:disabled {
+  background: #2b3442;
+  color: #64748b;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.status {
+  margin-top: 12px;
+  padding: 9px 10px;
+  font-size: 12px;
+  background: var(--panel);
+  border-radius: 9px;
+  word-break: keep-all;
+  transition: background 0.3s;
+}
+
+.status:empty { display: none; }
+
+.status.status-success { background: #064e3b; }
+.status.status-error { background: #451a1a; }
+.status.status-loading { background: #1e293b; }
+
+@keyframes isy-popup-dots {
+  0%, 20% { opacity: 0.2; }
+  50% { opacity: 1; }
+  80%, 100% { opacity: 0.2; }
+}
+
+.status.status-loading::after {
+  content: " ...";
+  display: inline;
+  animation: isy-popup-dots 1.2s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status.status-loading::after {
+    animation: none;
+  }
+}
