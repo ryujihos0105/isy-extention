@@ -26,6 +26,7 @@ from PIL import Image
 from contextlib import asynccontextmanager
 from typing import Optional
 from urllib.parse import urlparse, urlunparse, parse_qs, unquote
+import ipaddress
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -98,7 +99,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["chrome-extension://*"],
     allow_methods=["POST"],
     allow_headers=["Content-Type"],
 )
@@ -121,6 +122,38 @@ class VideoRequest(BaseModel):
     url: Optional[str] = None
     # platform_meta: url이 없을 때 플랫폼 API를 통해 영상을 가져오기 위한 식별자
     platform_meta: Optional[PlatformMeta] = None
+
+
+_BLOCKED_HOSTS = (
+    "localhost",
+    "127.",
+    "0.0.0.0",
+    "::1",
+    "169.254.",   # AWS/GCP link-local metadata
+    "100.64.",    # Carrier-grade NAT
+    "10.",
+    "172.16.", "172.17.", "172.18.", "172.19.", "172.20.",
+    "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+    "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+    "192.168.",
+)
+
+def _assert_safe_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"허용되지 않는 URL 스킴: {parsed.scheme}")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise ValueError("호스트를 파싱할 수 없습니다")
+    if any(host.startswith(b) for b in _BLOCKED_HOSTS):
+        raise ValueError(f"내부/사설 주소로의 요청은 허용되지 않습니다: {host}")
+    try:
+        addr = ipaddress.ip_address(host)
+        if not addr.is_global:
+            raise ValueError(f"글로벌 주소가 아닙니다: {host}")
+    except ValueError as exc:
+        if "글로벌 주소" in str(exc) or "내부" in str(exc):
+            raise
 
 
 def resolve_image_url(url: str, page_url: Optional[str] = None) -> tuple:
@@ -154,7 +187,9 @@ def resolve_image_url(url: str, page_url: Optional[str] = None) -> tuple:
 
 
 def fetch_image(url: str, page_url: Optional[str] = None) -> Image.Image:
+    _assert_safe_url(url)
     resolved_url, referer = resolve_image_url(url, page_url)
+    _assert_safe_url(resolved_url)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
@@ -278,4 +313,4 @@ async def analyze_video(req: VideoRequest):
 if __name__ == "__main__":
     import uvicorn
     print("ISY 실제 추론 서버 시작: http://localhost:8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

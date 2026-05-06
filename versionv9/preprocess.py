@@ -7,6 +7,7 @@ import torch
 import cv2
 from PIL import Image
 from torchvision import transforms
+from typing import cast
 
 import insightface
 from insightface.app import FaceAnalysis
@@ -147,7 +148,7 @@ def preprocess_image(image_source) -> tuple[torch.Tensor, torch.Tensor, str]:
         raise RuntimeError(f"[에러] 이미지 로드 실패: {e}")
 
     img_cropped, crop_status = crop_face(img_pil)   # 얼굴 크롭 + 상태
-    base   = eval_transform(img_cropped)            # (3, H, W) 정규화된 RGB 텐서
+    base = cast(torch.Tensor, eval_transform(img_cropped))  # (3, H, W) 정규화된 RGB 텐서
     x_rgb  = base                                   # RGB 브랜치 입력
     x_fftB = apply_fft_highpass_B(base)             # FFT 브랜치 입력 (방식 B 복원 이미지)
 
