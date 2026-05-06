@@ -1,119 +1,143 @@
-# ISY Extension
+# ISY — I See You
 
-ISY(I See You)는 웹 페이지에 표시되는 이미지 콘텐츠가 AI로 생성되었을 가능성을 브라우저에서 바로 확인하기 위한 Chrome 확장 프로그램입니다.
+웹 페이지의 이미지·영상·텍스트가 AI로 생성된 콘텐츠인지 브라우저에서 실시간으로 탐지하는 Chrome 확장 프로그램입니다.
 
-확장 프로그램은 현재 페이지의 이미지와 영상 요소를 수집하고, 로컬에서 실행 중인 FastAPI 서버(`http://localhost:8000`)에 분석 요청을 보냅니다. 서버는 PyTorch 기반 이미지 판별 모델(`versionv9`)을 사용해 REAL/FAKE 확률을 반환하고, 확장 프로그램은 결과 배지를 페이지 위에 표시합니다.
+확장 프로그램이 페이지의 미디어를 수집하면, 로컬 FastAPI 서버가 PyTorch 모델로 REAL/FAKE 확률을 계산하고, 결과 배지를 페이지 위에 바로 표시합니다.
 
-## 주요 기능
-
-- Chrome Extension Manifest V3 기반 브라우저 확장
-- 현재 페이지에서 이미지, 영상 요소 자동 탐색
-- 이미지 우클릭 메뉴를 통한 단일 콘텐츠 분석
-- 페이지 전체 분석 및 결과 배지 표시
-- 분석 결과 메모리 캐시 적용
-- FastAPI 기반 로컬 추론 서버
-- PyTorch EfficientNet-B4 Late Fusion 이미지 모델
-- 개발 및 UI 테스트용 mock 서버 제공
-
-## 현재 구현 상태
-
-| 영역 | 상태 | 설명 |
-| --- | --- | --- |
-| 이미지 분석 | 구현됨 | `versionv9` 모델과 `weights/best.pt`를 사용합니다. |
-| 텍스트 분석 | 서버 엔드포인트만 준비됨 | 실제 모델 로더는 아직 구현되어 있지 않습니다. |
-| 영상 분석 | 서버 엔드포인트만 준비됨 | 실제 영상 모델 추론 함수는 아직 구현되어 있지 않습니다. |
-| 확장 프로그램 UI | 구현됨 | 팝업, 배지, 페이지 스캔, 우클릭 분석을 포함합니다. |
-| Mock 서버 | 구현됨 | 실제 모델 없이 확장 프로그램 동작을 확인할 수 있습니다. |
-
-## 프로젝트 구조
-
-```text
-isy-extention/
-├─ extension/
-│  ├─ manifest.json              # Chrome 확장 프로그램 설정
-│  ├─ background.js              # Service Worker, API 호출, 캐시, 컨텍스트 메뉴
-│  ├─ content.js                 # 페이지 콘텐츠 스캔 및 분석 요청
-│  ├─ content.css                # 페이지 배지/오버레이 스타일
-│  ├─ lib/
-│  │  ├─ namespace.js            # ISY 전역 네임스페이스
-│  │  ├─ site-adapters.js        # 사이트별 DOM 탐색 어댑터
-│  │  ├─ media-extractor.js      # 이미지/영상/텍스트 후보 추출
-│  │  ├─ badge-manager.js        # 분석 배지 DOM 관리
-│  │  ├─ ui-manager.js           # 결과 배지와 상세 UI 렌더링
-│  │  └─ observer.js             # DOM 변경 및 URL 변경 감지
-│  ├─ popup/
-│  │  ├─ popup.html              # 확장 프로그램 팝업 화면
-│  │  ├─ popup.css
-│  │  └─ popup.js
-│  └─ icons/
-├─ versionv9/
-│  ├─ model.py                   # EfficientNet-B4 Late Fusion 모델
-│  ├─ preprocess.py              # 얼굴 크롭, FFT 변환, 이미지 전처리
-│  ├─ config.py                  # 모델 경로와 전처리 설정
-│  └─ weights/
-│     └─ best.pt                 # 이미지 모델 가중치
-├─ server.py                     # 실제 FastAPI 추론 서버
-├─ mock_server.py                # 모델 없이 테스트하는 Mock 서버
-├─ requirements.txt              # Python 의존성
-└─ README.md
+```
+브라우저 (content.js)
+    └─► background.js (Service Worker)
+            └─► localhost:8000 (FastAPI + PyTorch)
+                    └─► REAL / FAKE 확률 반환
 ```
 
-## 실행 준비
+## 구현 상태
 
-Python 3.10 이상을 권장합니다. GPU가 없어도 CPU로 실행할 수 있지만, 이미지 추론 속도는 GPU 환경이 더 빠릅니다.
+| 영역 | 상태 | 비고 |
+|------|------|------|
+| 이미지 분석 | ✅ 완성 | EfficientNet-B4 Late Fusion + FFT (versionv9) |
+| 텍스트 분석 | 🔲 엔드포인트만 준비 | `text_model/` 폴더 추가 시 활성화 |
+| 영상 분석 | 🔲 엔드포인트만 준비 | `video_model/` 폴더 추가 시 활성화 |
+| 확장 프로그램 UI | ✅ 완성 | 팝업, 배지, 페이지 스캔, 우클릭 분석 |
+| Mock 서버 | ✅ 완성 | 모델 없이 UI 동작 확인 가능 |
+
+---
+
+## 빠른 시작
+
+### 1. 저장소 클론
+
+```bash
+git clone https://github.com/ryujihos0105/isy-extention.git
+cd isy-extention
+```
+
+### 2. Python 환경 설정
+
+Python 3.10 이상이 필요합니다.
 
 ```bash
 python -m venv .venv
+
+# Windows
 .venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+```
+
+### 3. 패키지 설치
+
+**PyTorch는 환경에 맞는 버전을 먼저 설치하세요.**
+
+```bash
+# CUDA 11.8 (GPU)
+pip install torch==2.7.1+cu118 torchvision==0.22.1+cu118 --index-url https://download.pytorch.org/whl/cu118
+
+# CUDA 12.1 (GPU)
+pip install torch==2.7.1+cu121 torchvision==0.22.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+
+# CPU only
+pip install torch==2.7.1 torchvision==0.22.1
+```
+
+그다음 나머지 패키지를 설치합니다.
+
+```bash
 pip install -r requirements.txt
 ```
 
-모델 가중치 파일은 GitHub에 올리지 않는 것을 권장합니다. 저장소를 새로 받은 사람은 다음 경로에 이미지 모델 가중치를 직접 넣어야 합니다.
+### 4. 모델 가중치 배치
 
-```text
+`*.pt` 파일은 Git에 포함되지 않습니다. 팀에서 공유받은 가중치 파일을 아래 경로에 넣어주세요.
+
+```
 versionv9/weights/best.pt
 ```
 
-## 서버 실행
-
-실제 이미지 모델로 실행:
+### 5. 서버 실행
 
 ```bash
+# 실제 모델로 실행
 python server.py
-```
 
-모델 없이 확장 프로그램 UI만 확인:
-
-```bash
+# 모델 없이 UI만 테스트
 python mock_server.py
 ```
 
-서버가 정상 실행되면 기본 주소는 다음과 같습니다.
+서버가 실행되면 `http://localhost:8000` 에서 응답합니다.
 
-```text
-http://localhost:8000
+### 6. 확장 프로그램 설치
+
+1. Chrome에서 `chrome://extensions` 를 엽니다.
+2. 오른쪽 위 **개발자 모드**를 켭니다.
+3. **압축해제된 확장 프로그램을 로드합니다**를 클릭합니다.
+4. 이 프로젝트의 `extension/` 폴더를 선택합니다.
+5. 서버가 실행된 상태에서 아무 페이지나 열고, 팝업에서 **현재 페이지 분석**을 누릅니다.
+
+---
+
+## 프로젝트 구조
+
+```
+isy-extention/
+├── extension/                   # Chrome 확장 프로그램
+│   ├── manifest.json            # MV3 설정 (권한, 스크립트 목록)
+│   ├── background.js            # Service Worker — API 호출, LRU 캐시
+│   ├── content.js               # 페이지 스캔, 배지 표시
+│   ├── content.css
+│   ├── lib/
+│   │   ├── namespace.js         # ISY 전역 네임스페이스
+│   │   ├── site-adapters.js     # 사이트별 DOM 어댑터 (YouTube, Instagram 등)
+│   │   ├── media-extractor.js   # 이미지·영상·텍스트 후보 수집
+│   │   ├── badge-manager.js     # 배지 DOM 부착/제거
+│   │   ├── ui-manager.js        # 배지 렌더링, 상세 오버레이
+│   │   └── observer.js          # DOM 변화·URL 변화 감지
+│   └── popup/
+│       ├── popup.html
+│       ├── popup.css
+│       └── popup.js
+├── versionv9/                   # 이미지 판별 모델 (완성)
+│   ├── model.py                 # EfficientNet-B4 Late Fusion 정의
+│   ├── preprocess.py            # 얼굴 크롭 + FFT 방식 B 전처리
+│   ├── config.py                # 경로·하이퍼파라미터 설정
+│   └── weights/
+│       └── best.pt              # 학습된 가중치 (Git 미포함 — 별도 공유)
+├── server.py                    # FastAPI 추론 서버
+├── mock_server.py               # 테스트용 Mock 서버
+└── requirements.txt             # Python 의존성
 ```
 
-## Chrome 확장 프로그램 설치
+---
 
-1. Chrome에서 `chrome://extensions`를 엽니다.
-2. 오른쪽 위의 `개발자 모드`를 켭니다.
-3. `압축해제된 확장 프로그램을 로드합니다`를 누릅니다.
-4. 이 프로젝트의 `extension/` 폴더를 선택합니다.
-5. `python server.py` 또는 `python mock_server.py`를 실행한 상태에서 웹 페이지를 엽니다.
-6. 확장 프로그램 팝업에서 `현재 페이지 분석`을 누릅니다.
+## API
 
-## API 사용 예시
-
-이미지 분석:
+### `POST /api/analyze/image`
 
 ```bash
-curl -X POST http://localhost:8000/api/analyze/image ^
-  -H "Content-Type: application/json" ^
-  -d "{\"url\":\"https://example.com/image.jpg\",\"media_type\":\"image\"}"
+curl -X POST http://localhost:8000/api/analyze/image \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/image.jpg"}'
 ```
-
-응답 예시:
 
 ```json
 {
@@ -123,38 +147,35 @@ curl -X POST http://localhost:8000/api/analyze/image ^
   "real_probability": 0.8766,
   "label": "REAL",
   "consistency_score": 88,
-  "crop_status": "success",
+  "crop_status": "성공",
   "model": "versionv9-fftB"
 }
 ```
 
-## 모델 추가 방법
+### `POST /api/analyze/text` / `POST /api/analyze/video`
 
-텍스트나 영상 모델을 추가하려면 `server.py`의 확장 지점을 사용합니다.
+현재 엔드포인트만 준비된 상태입니다. 각 모델 폴더(`text_model/`, `video_model/`)를 추가하면 자동으로 활성화됩니다.
 
-1. `text_model/` 또는 `video_model/` 폴더를 `versionv9/`와 비슷한 구조로 만듭니다.
-2. 각 폴더에 `model.py`, `config.py`, `preprocess.py`, `weights/best.pt`를 준비합니다.
-3. `server.py`의 `_load_text_model()` 또는 `_load_video_model()`을 구현합니다.
-4. 텍스트는 `/api/analyze/text`, 영상은 `/api/analyze/video` 응답 형식을 이미지 분석과 맞춥니다.
+---
+
+## 새 모델 추가 방법
+
+`versionv9/`와 동일한 구조로 폴더를 만들면 됩니다.
+
+```
+text_model/          또는       video_model/
+├── model.py                    ├── model.py
+├── preprocess.py               ├── preprocess.py
+├── config.py                   ├── config.py
+└── weights/best.pt             └── weights/best.pt
+```
+
+그다음 `server.py`의 `_load_text_model()` 또는 `_load_video_model()` 함수를 구현하고 서버를 재시작합니다.
+
+---
 
 ## 주의사항
 
-- 현재 실제 추론이 완성된 영역은 이미지 모델입니다.
-- `*.pt` 모델 가중치는 `.gitignore`에 포함되어 있어 Git에 자동으로 올라가지 않습니다.
-- 확장 프로그램은 로컬 서버 `http://localhost:8000`에 요청하도록 설정되어 있습니다.
-- 공개 배포 전에는 모델 가중치 배포 방식, 라이선스, 데이터 출처, 성능 지표를 별도로 정리하는 것이 좋습니다.
-
-## GitHub에 새로 올리기
-
-현재 폴더가 아직 Git 저장소가 아니라면 다음 순서로 올릴 수 있습니다.
-
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/USER/REPOSITORY.git
-git push -u origin main
-```
-
-`versionv9/weights/best.pt`는 `.gitignore` 때문에 커밋되지 않습니다. 모델 파일까지 공유해야 한다면 GitHub Releases, Google Drive, Hugging Face Hub 같은 별도 배포 위치를 README에 추가하는 방식을 권장합니다.
+- 모델 가중치(`*.pt`)는 `.gitignore`로 Git에 포함되지 않습니다. 팀 내 별도 채널(Google Drive, Hugging Face Hub 등)로 공유하세요.
+- 서버는 `localhost:8000`에서만 요청을 수신합니다. 외부에서는 접근할 수 없습니다.
+- 확장 프로그램은 모든 URL에서 실행되므로 온라인 뱅킹 등 민감한 사이트에서 사용 시 주의하세요.
