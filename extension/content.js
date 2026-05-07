@@ -214,6 +214,40 @@
         sendResponse(focusResult(message.level));
         return false;
 
+      case 'RETRY_FAILED': {
+        const failedKeys = Array.from(ISY.state.results.entries())
+          .filter(([, r]) => r.level === 'failed')
+          .map(([key]) => key);
+
+        failedKeys.forEach(key => {
+          ISY.state.analyzedUrls.delete(key);
+          ISY.state.results.delete(key);
+        });
+        progress.failed = Math.max(0, progress.failed - failedKeys.length);
+
+        const itemsToRetry = getCurrentItems().allItems
+          .filter(item => failedKeys.includes(getItemKey(item)));
+        analyzeItems(itemsToRetry, { force: true });
+
+        sendResponse({ ok: true, retried: itemsToRetry.length, requested: failedKeys.length });
+        return false;
+      }
+
+      case 'STOP_ANALYSIS': {
+        analysisStarted = false;
+        followupObserverStarted = false;
+        if (ISY.observer && ISY.observer.stopAll) {
+          ISY.observer.stopAll();
+        }
+        // background.js에서 in-flight 요청을 모두 abort. SW가 죽었거나 응답 없어도 무시.
+        try {
+          chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' })
+            .catch(() => {});
+        } catch {}
+        sendResponse({ ok: true });
+        return false;
+      }
+
       case 'ANALYSIS_RESULT': {
         const targetEl = Array.from(document.querySelectorAll('img, video'))
           .find(el => ISY.getUrlFromElement(el) === message.url);

@@ -14,6 +14,8 @@ const failedCountEl = document.getElementById('failed-count');
 const focusHighBtn = document.getElementById('focus-high-btn');
 const focusLowBtn = document.getElementById('focus-low-btn');
 const focusFailedBtn = document.getElementById('focus-failed-btn');
+const retryFailedBtn = document.getElementById('retry-failed-btn');
+const stopAnalysisBtn = document.getElementById('stop-analysis-btn');
 
 function setStatus(text, type) {
   statusEl.textContent = text;
@@ -74,6 +76,13 @@ function updateResultsSummary(state) {
   const low = state.lowCount || state.realCount || 0;
   const failed = state.failedCount || 0;
   const total = high + low + failed;
+  const pending = state.pendingCount || 0;
+
+  // Stop 버튼은 결과 유무와 무관 — 분석 진행 중이면 즉시 노출
+  if (stopAnalysisBtn) {
+    const running = pending > 0 || !!state.analysisStarted;
+    stopAnalysisBtn.classList.toggle('hidden', !running);
+  }
 
   if (total === 0) {
     resultsSummary.classList.add('hidden');
@@ -90,7 +99,11 @@ function updateResultsSummary(state) {
   setFocusButtonState(focusLowBtn, low);
   setFocusButtonState(focusFailedBtn, failed);
 
-  const pending = state.pendingCount || 0;
+  if (retryFailedBtn) {
+    retryFailedBtn.disabled = failed <= 0;
+    retryFailedBtn.classList.toggle('hidden', failed <= 0);
+  }
+
   summaryNote.textContent = pending > 0
     ? `총 ${total}개 결과, ${pending}개 분석 중 · 숫자를 누르면 해당 콘텐츠로 이동합니다.`
     : `총 ${total}개 결과 · 새로 보이는 콘텐츠도 계속 확인합니다.`;
@@ -157,6 +170,31 @@ async function focusResult(level) {
 focusHighBtn.addEventListener('click', () => focusResult('high'));
 focusLowBtn.addEventListener('click', () => focusResult('low'));
 focusFailedBtn.addEventListener('click', () => focusResult('failed'));
+
+if (retryFailedBtn) {
+  retryFailedBtn.addEventListener('click', async () => {
+    setStatus('실패 항목을 재분석합니다', 'loading');
+    const res = await safeSend({ type: 'RETRY_FAILED' });
+    if (!res) return;
+    if (!res.ok || res.retried === 0) {
+      setStatus('재시도할 항목을 찾지 못했습니다.', 'error');
+      return;
+    }
+    setStatus(`${res.retried}개 항목 재분석 중`, 'loading');
+    startPolling();
+  });
+}
+
+if (stopAnalysisBtn) {
+  stopAnalysisBtn.addEventListener('click', async () => {
+    const res = await safeSend({ type: 'STOP_ANALYSIS' });
+    if (res && res.ok) {
+      stopPolling();
+      setStatus('자동 분석을 중단했습니다.', 'success');
+      stopAnalysisBtn.classList.add('hidden');
+    }
+  });
+}
 
 let pollTimer = null;
 

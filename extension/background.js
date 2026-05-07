@@ -4,10 +4,94 @@
 
 const API_BASE = "http://localhost:8000";  // 실제 백엔드로 교체 필요
 const FETCH_TIMEOUT_MS = 25000;
+const RETRY_COUNT = 1;
+const RETRY_BACKOFF_MS = 1000;
+
+// 네트워크/일시 장애 대비.
+// - timeout(AbortError)과 외부 STOP은 retry하지 않는다.
+// - 5xx 응답도 retry 대상으로 처리한다 (fetch는 5xx에서 reject하지 않으므로 별도 분기).
+// - timeout은 시도마다 새로 시작 (호출자가 누적 25s를 한번 거는 게 아니라, 시도당 25s를 보장).
+async function fetchWithRetry(url, options, externalSignal) {
+  let lastErr;
+  for (let i = 0; i <= RETRY_COUNT; i++) {
+    if (externalSignal?.aborted) {
+      throw new DOMException('aborted', 'AbortError');
+    }
+
+    const timeoutCtl = new AbortController();
+    const timer = setTimeout(() => timeoutCtl.abort(), FETCH_TIMEOUT_MS);
+    const signal = externalSignal
+      ? AbortSignal.any([externalSignal, timeoutCtl.signal])
+      : timeoutCtl.signal;
+
+    try {
+      const response = await fetch(url, { ...options, signal });
+
+      if (response.status >= 500 && response.status < 600 && i < RETRY_COUNT) {
+        try { response.body?.cancel(); } catch {}
+        await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
+        continue;
+      }
+
+      return response;
+    } catch (err) {
+      lastErr = err;
+      if (err.name === 'AbortError') throw err;
+      if (i === RETRY_COUNT) throw err;
+      await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastErr;
+}
 
 const memCache = new Map();
 const MAX_CACHE_SIZE = 200;
 const CACHE_TTL_MS = 30 * 60 * 1000;
+
+// 진행 중인 분석 요청의 AbortController. STOP_BG_ANALYSIS로 일괄 중단.
+const activeControllers = new Set();
+function registerController() {
+  const ctl = new AbortController();
+  activeControllers.add(ctl);
+  return ctl;
+}
+function releaseController(ctl) {
+  activeControllers.delete(ctl);
+}
+function abortAllActive() {
+  for (const ctl of activeControllers) {
+    try { ctl.abort(); } catch {}
+  }
+  activeControllers.clear();
+}
+
+// server.py의 resolve_image_url 정규화 로직을 미러링.
+// 서버가 실제 fetch하는 URL 형태로 캐시 키를 통일해야
+// sqp만 다른 동일 썸네일이나 dthumb 변형이 캐시 적중한다.
+function normalizeUrlForCache(url) {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('ytimg.com')) {
+      u.search = '';
+      u.hash = '';
+      return u.toString();
+    }
+    if (u.hostname.includes('pstatic.net') && u.pathname.includes('dthumb')) {
+      const src = u.searchParams.get('src');
+      if (src) {
+        try {
+          return decodeURIComponent(src).replace(/^"|"$/g, '');
+        } catch {}
+      }
+    }
+    return url;
+  } catch {
+    return url;
+  }
+}
 
 // ============================================
 // 이벤트 리스너는 반드시 top-level에 등록
@@ -113,6 +197,12 @@ function handleMessage(message, sender, sendResponse) {
     return true;
   }
 
+  if (message.type === "STOP_BG_ANALYSIS") {
+    abortAllActive();
+    sendResponse({ ok: true });
+    return false;
+  }
+
   return false;
 }
 
@@ -129,25 +219,23 @@ async function analyzeContent(url, mediaType, text, platformMeta, pageUrl, itemM
 
   if (!url) throw new Error('URL required');
 
-  const cached = getCached(url);
+  const cacheKey = normalizeUrlForCache(url);
+  const cached = await getCached(cacheKey);
   if (cached) {
     return Object.assign({}, cached, { fromCache: true });
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
+  const ctl = registerController();
   try {
-    const response = await fetch(`${API_BASE}/api/analyze/image`, {
+    const response = await fetchWithRetry(`${API_BASE}/api/analyze/image`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url,
         media_type: 'image',
         page_url: pageUrl || null
-      }),
-      signal: controller.signal
-    });
+      })
+    }, ctl.signal);
 
     if (!response.ok) {
       throw new Error(await formatApiError(response));
@@ -157,15 +245,15 @@ async function analyzeContent(url, mediaType, text, platformMeta, pageUrl, itemM
     if (itemMeta) {
       result.item_meta = itemMeta;
     }
-    setCached(url, stripLargeFields(result));
+    setCached(cacheKey, stripLargeFields(result));
     return result;
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw new Error('Analysis timeout (25s)');
+      throw new Error('Analysis aborted or timed out');
     }
     throw err;
   } finally {
-    clearTimeout(timer);
+    releaseController(ctl);
   }
 }
 
@@ -183,25 +271,24 @@ async function analyzeContent(url, mediaType, text, platformMeta, pageUrl, itemM
 //   - url이 있으면 서버가 직접 다운로드
 //   - url이 null이면 platformMeta.videoId로 서버가 플랫폼 API를 통해 처리
 async function analyzeVideo(url, platformMeta) {
-  const cacheKey = url || `video:${platformMeta?.platform ?? 'unknown'}:${platformMeta?.videoId ?? 'unknown'}`;
-  const cached = getCached(cacheKey);
+  const cacheKey = url
+    ? normalizeUrlForCache(url)
+    : `video:${platformMeta?.platform ?? 'unknown'}:${platformMeta?.videoId ?? 'unknown'}`;
+  const cached = await getCached(cacheKey);
   if (cached) {
     return Object.assign({}, cached, { fromCache: true });
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
+  const ctl = registerController();
   try {
-    const response = await fetch(`${API_BASE}/api/analyze/video`, {
+    const response = await fetchWithRetry(`${API_BASE}/api/analyze/video`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url: url || null,
         platform_meta: platformMeta || null
-      }),
-      signal: controller.signal
-    });
+      })
+    }, ctl.signal);
 
     if (!response.ok) {
       throw new Error(await formatApiError(response));
@@ -212,11 +299,11 @@ async function analyzeVideo(url, platformMeta) {
     return result;
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw new Error('Analysis timeout (25s)');
+      throw new Error('Analysis aborted or timed out');
     }
     throw err;
   } finally {
-    clearTimeout(timer);
+    releaseController(ctl);
   }
 }
 
@@ -224,21 +311,18 @@ async function analyzeText(text) {
   if (!text) throw new Error('Text required');
 
   const cacheKey = 'text:' + text.slice(0, 120).replace(/\s+/g, ' ');
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     return Object.assign({}, cached, { fromCache: true });
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
+  const ctl = registerController();
   try {
-    const response = await fetch(`${API_BASE}/api/analyze/text`, {
+    const response = await fetchWithRetry(`${API_BASE}/api/analyze/text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-      signal: controller.signal
-    });
+      body: JSON.stringify({ text })
+    }, ctl.signal);
 
     if (!response.ok) {
       throw new Error(await formatApiError(response));
@@ -249,11 +333,11 @@ async function analyzeText(text) {
     return result;
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw new Error('Analysis timeout (25s)');
+      throw new Error('Analysis aborted or timed out');
     }
     throw err;
   } finally {
-    clearTimeout(timer);
+    releaseController(ctl);
   }
 }
 
@@ -276,14 +360,55 @@ async function analyzeBatch(items) {
 }
 
 // ============================================
-// 메모리 캐시 (LRU)
+// 메모리 캐시 (LRU) + chrome.storage.session 영속화
+// SW가 30초 idle로 종료되어도 캐시가 살아남는다.
 // ============================================
-function getCached(url) {
+const SESSION_CACHE_KEY = 'isyCache';
+const FLUSH_DEBOUNCE_MS = 500;
+
+const cacheReady = (async () => {
+  try {
+    const data = await chrome.storage.session.get(SESSION_CACHE_KEY);
+    const entries = data?.[SESSION_CACHE_KEY]?.entries;
+    if (Array.isArray(entries)) {
+      const now = Date.now();
+      for (const [key, value] of entries) {
+        if (value && typeof value.timestamp === 'number'
+            && (now - value.timestamp) <= CACHE_TTL_MS) {
+          memCache.set(key, value);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[ISY-BG] cache hydrate failed:', err.message);
+  }
+})();
+
+let flushTimer = null;
+function scheduleFlush() {
+  if (flushTimer) clearTimeout(flushTimer);
+  flushTimer = setTimeout(flushCache, FLUSH_DEBOUNCE_MS);
+}
+
+async function flushCache() {
+  flushTimer = null;
+  try {
+    await chrome.storage.session.set({
+      [SESSION_CACHE_KEY]: { entries: Array.from(memCache.entries()) }
+    });
+  } catch (err) {
+    console.warn('[ISY-BG] cache flush failed:', err.message);
+  }
+}
+
+async function getCached(url) {
+  await cacheReady;
   const entry = memCache.get(url);
   if (!entry) return null;
 
   if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
     memCache.delete(url);
+    scheduleFlush();
     return null;
   }
 
@@ -293,12 +418,14 @@ function getCached(url) {
   return entry.result;
 }
 
-function setCached(url, result) {
+async function setCached(url, result) {
+  await cacheReady;
   while (memCache.size >= MAX_CACHE_SIZE) {
     const oldestKey = memCache.keys().next().value;
     memCache.delete(oldestKey);
   }
   memCache.set(url, { result, timestamp: Date.now() });
+  scheduleFlush();
 }
 
 function stripLargeFields(result) {

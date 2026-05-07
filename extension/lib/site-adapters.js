@@ -194,7 +194,11 @@
     'youtube.com': {
       name: 'YouTube',
       minSize: 100,
-      getPageType: () => location.pathname.startsWith('/watch') ? 'watch' : 'home',
+      getPageType: () => {
+        if (location.pathname.startsWith('/shorts/')) return 'shorts';
+        if (location.pathname.startsWith('/watch')) return 'watch';
+        return 'home';
+      },
       pages: {
         home: {
           imageSelectors: [
@@ -218,10 +222,23 @@
             '#description ytd-text-inline-expander',
             'ytd-comment-renderer #content-text'
           ]
+        },
+        shorts: {
+          imageSelectors: [],
+          videoSelectors: [
+            'ytd-reel-video-renderer video',
+            'ytd-shorts video',
+            'video.html5-main-video'
+          ],
+          textSelectors: [
+            'ytd-reel-video-renderer #reel-title',
+            'ytd-reel-player-header-renderer h2',
+            'ytd-comment-renderer #content-text'
+          ]
         }
       },
       containerFinder: target =>
-        target.closest('ytd-thumbnail') || target.parentElement || document.body
+        target.closest('ytd-thumbnail, ytd-reel-video-renderer') || target.parentElement || document.body
     },
 
     'news.naver.com': {

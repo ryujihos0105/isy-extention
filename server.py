@@ -25,8 +25,9 @@ from io import BytesIO
 from PIL import Image
 from contextlib import asynccontextmanager
 from typing import Optional
-from urllib.parse import urlparse, urlunparse, parse_qs, unquote
+from urllib.parse import urlparse, urlunparse, parse_qs, unquote, urljoin
 import ipaddress
+import socket
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -138,6 +139,10 @@ _BLOCKED_HOSTS = (
     "192.168.",
 )
 
+MAX_IMAGE_BYTES = 30 * 1024 * 1024  # 30MB
+MAX_REDIRECTS = 3
+
+
 def _assert_safe_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
@@ -147,13 +152,32 @@ def _assert_safe_url(url: str) -> None:
         raise ValueError("호스트를 파싱할 수 없습니다")
     if any(host.startswith(b) for b in _BLOCKED_HOSTS):
         raise ValueError(f"내부/사설 주소로의 요청은 허용되지 않습니다: {host}")
+
+    # 호스트가 IP 리터럴이면 즉시 검증
     try:
-        addr = ipaddress.ip_address(host)
-        if not addr.is_global:
-            raise ValueError(f"글로벌 주소가 아닙니다: {host}")
+        addr_literal = ipaddress.ip_address(host)
+        if (addr_literal.is_private or addr_literal.is_loopback
+                or addr_literal.is_link_local or addr_literal.is_reserved
+                or addr_literal.is_multicast or addr_literal.is_unspecified):
+            raise ValueError(f"내부/사설 IP: {addr_literal}")
+        return
     except ValueError as exc:
-        if "글로벌 주소" in str(exc) or "내부" in str(exc):
+        if "내부" in str(exc):
             raise
+
+    # DNS 해석 후 모든 결과 IP 검증 (DNS rebinding 방지)
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        raise ValueError(f"DNS 해석 실패: {host}") from e
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+            raise ValueError(f"내부/사설 주소로 해석됨: {host} → {addr}")
 
 
 def resolve_image_url(url: str, page_url: Optional[str] = None) -> tuple:
@@ -189,21 +213,68 @@ def resolve_image_url(url: str, page_url: Optional[str] = None) -> tuple:
 def fetch_image(url: str, page_url: Optional[str] = None) -> Image.Image:
     _assert_safe_url(url)
     resolved_url, referer = resolve_image_url(url, page_url)
-    _assert_safe_url(resolved_url)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": referer,
     }
-    resp = requests.get(resolved_url, headers=headers, timeout=10)
-    resp.raise_for_status()
 
-    content_type = resp.headers.get("content-type", "")
-    if "text/html" in content_type:
-        raise ValueError(f"이미지가 아닌 응답 반환됨 (content-type: {content_type})")
+    # 명시적 리다이렉트 추적 — 매 hop마다 _assert_safe_url 재검증 (SSRF 방지)
+    current_url = resolved_url
+    resp = None
+    for hop in range(MAX_REDIRECTS + 1):
+        _assert_safe_url(current_url)
+        resp = requests.get(
+            current_url,
+            headers=headers,
+            timeout=10,
+            stream=True,
+            allow_redirects=False,
+        )
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("location")
+            resp.close()
+            if not location:
+                raise ValueError("리다이렉트에 location 헤더 없음")
+            current_url = urljoin(current_url, location)
+            continue
+        break
+    else:
+        if resp is not None:
+            resp.close()
+        raise ValueError(f"리다이렉트 횟수 초과 ({MAX_REDIRECTS}회)")
 
-    img = Image.open(BytesIO(resp.content)).convert("RGB")
+    try:
+        resp.raise_for_status()
+
+        content_type = resp.headers.get("content-type", "").lower()
+        if not content_type.startswith("image/"):
+            raise ValueError(f"이미지가 아닌 응답 (content-type: {content_type})")
+
+        content_length = resp.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > MAX_IMAGE_BYTES:
+                    raise ValueError(f"이미지 크기 초과: {content_length} bytes")
+            except (TypeError, ValueError):
+                pass  # 헤더 파싱 실패는 스트림 검증에 위임
+
+        # 청크 단위 스트림 다운로드 + 누적 크기 검증
+        buf = BytesIO()
+        total = 0
+        for chunk in resp.iter_content(64 * 1024):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > MAX_IMAGE_BYTES:
+                raise ValueError(f"이미지 크기 초과 (스트림 중 {total} bytes)")
+            buf.write(chunk)
+        buf.seek(0)
+    finally:
+        resp.close()
+
+    img = Image.open(buf).convert("RGB")
     img.load()
     return img
 
