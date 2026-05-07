@@ -78,8 +78,8 @@ function setFocusButtonState(button, count) {
 }
 
 function updateResultsSummary(state) {
-  const high = state.highCount || state.fakeCount || 0;
-  const low = state.lowCount || state.realCount || 0;
+  const high = state.highCount || 0;
+  const low = state.lowCount || 0;
   const failed = state.failedCount || 0;
   const total = high + low + failed;
   const pending = state.pendingCount || 0;
@@ -222,8 +222,8 @@ function startPolling() {
       updateResultsSummary(state);
 
       const signature = [
-        state.highCount || state.fakeCount || 0,
-        state.lowCount || state.realCount || 0,
+        state.highCount || 0,
+        state.lowCount || 0,
         state.failedCount || 0,
         state.pendingCount || 0
       ].join(':');

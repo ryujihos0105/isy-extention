@@ -1,3 +1,10 @@
+:root {
+  --isy-high: #EA580C;
+  --isy-low: #0F766E;
+  --isy-uncertain: #CA8A04;
+  --isy-failed: #475569;
+}
+
 .isy-badge {
   pointer-events: auto;
   cursor: pointer;
@@ -9,6 +16,12 @@
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   user-select: none;
   white-space: nowrap;
+}
+
+.isy-badge.isy-badge-compact {
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 4px;
 }
 
 .isy-badge-hidden {
@@ -30,7 +43,7 @@
 }
 
 .isy-badge.isy-low {
-  background: #0F766E;
+  background: var(--isy-low);
   color: white;
   animation: isy-pop 0.4s ease-out;
 }
@@ -42,7 +55,7 @@
 }
 
 .isy-badge.isy-high {
-  background: #EA580C;
+  background: var(--isy-high);
   color: white;
   box-shadow: 0 2px 6px rgba(234, 88, 12, 0.4);
   animation: isy-fake-attention 1.4s ease-out 1;
@@ -61,8 +74,20 @@
   100% { box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4); }
 }
 
+.isy-badge.isy-uncertain {
+  background: var(--isy-uncertain);
+  color: white;
+  box-shadow: 0 2px 6px rgba(202, 138, 4, 0.4);
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+
+.isy-badge.isy-uncertain:hover {
+  box-shadow: 0 2px 14px rgba(202, 138, 4, 0.7);
+  transform: scale(1.04);
+}
+
 .isy-badge.isy-failed {
-  background: #475569;
+  background: var(--isy-failed);
   color: #f1f5f9;
   font-size: 10px;
   padding: 3px 7px;
@@ -74,7 +99,7 @@
 }
 
 .isy-badge.isy-loading-badge {
-  background: #475569;
+  background: var(--isy-failed);
   color: #f1f5f9;
   font-size: 10px;
   padding: 3px 7px;
@@ -90,11 +115,11 @@
 }
 
 .isy-detail-card.failed {
-  border: 2px solid #475569;
+  border: 2px solid var(--isy-failed);
 }
 
 .isy-detail-card.failed .isy-detail-icon {
-  background: #475569;
+  background: var(--isy-failed);
   color: #f1f5f9;
 }
 
@@ -134,10 +159,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .isy-badge.isy-fake { animation: none; }
-  .isy-badge.isy-real { animation: none; }
   .isy-badge.isy-high { animation: none; }
   .isy-badge.isy-low { animation: none; }
+  .isy-badge.isy-uncertain { animation: none; }
   .isy-badge.isy-loading-badge { animation: none; opacity: 0.85; }
 }
 
@@ -162,10 +186,9 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.isy-detail-card.fake,
-.isy-detail-card.high { border: 2px solid #EA580C; }
-.isy-detail-card.real,
-.isy-detail-card.low { border: 2px solid #0F766E; }
+.isy-detail-card.high { border: 2px solid var(--isy-high); }
+.isy-detail-card.uncertain { border: 2px solid var(--isy-uncertain); }
+.isy-detail-card.low { border: 2px solid var(--isy-low); }
 
 .isy-detail-card h3 {
   margin: 0 0 16px;
@@ -186,10 +209,9 @@
   font-weight: 700;
   flex-shrink: 0;
 }
-.isy-detail-card.fake .isy-detail-icon,
-.isy-detail-card.high .isy-detail-icon { background: #EA580C; color: white; }
-.isy-detail-card.real .isy-detail-icon,
-.isy-detail-card.low .isy-detail-icon { background: #0F766E; color: white; }
+.isy-detail-card.high .isy-detail-icon { background: var(--isy-high); color: white; }
+.isy-detail-card.uncertain .isy-detail-icon { background: var(--isy-uncertain); color: white; }
+.isy-detail-card.low .isy-detail-icon { background: var(--isy-low); color: white; }
 
 .isy-explain {
   margin: -6px 0 14px;
@@ -217,9 +239,8 @@
   font-weight: 700;
 }
 
-.isy-detail-card.fake .isy-gauge-value,
 .isy-detail-card.high .isy-gauge-value { color: #FDBA74; }
-.isy-detail-card.real .isy-gauge-value,
+.isy-detail-card.uncertain .isy-gauge-value { color: #FDE68A; }
 .isy-detail-card.low .isy-gauge-value { color: #5EEAD4; }
 
 .isy-gauge-track {
@@ -239,27 +260,29 @@
   transition: width 0.4s ease-out;
 }
 
-.isy-gauge-fill.fake {
-  background: linear-gradient(90deg, #F59E0B, #EF4444);
-}
-
 .isy-gauge-fill.high {
-  background: linear-gradient(90deg, #F59E0B, #EA580C);
+  background: linear-gradient(90deg, #F59E0B, var(--isy-high));
 }
 
-.isy-gauge-fill.real,
+.isy-gauge-fill.uncertain {
+  background: linear-gradient(90deg, #FBBF24, var(--isy-uncertain));
+}
+
 .isy-gauge-fill.low {
   background: linear-gradient(90deg, #10B981, #34D399);
 }
 
-.isy-gauge-threshold {
+.isy-gauge-threshold-low,
+.isy-gauge-threshold-high {
   position: absolute;
   top: -2px;
   bottom: -2px;
-  left: 50%;
   width: 1px;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.45);
 }
+
+.isy-gauge-threshold-low { left: 40%; }
+.isy-gauge-threshold-high { left: 60%; }
 
 .isy-gauge-scale {
   display: flex;

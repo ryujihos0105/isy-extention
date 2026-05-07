@@ -58,14 +58,19 @@
       && centerY < viewportH;
   }
 
+  // 작은 썸네일에서 배지가 콘텐츠를 가리지 않도록 컨테이너 너비에 맞춰 컴팩트 모드 적용.
+  const COMPACT_WIDTH_THRESHOLD = 160;
+
   function attachBadge(target, badge) {
     if (!target || !target.isConnected) return false;
 
     const container = findContainer(target);
     if (!container) return false;
 
+    // static 컨테이너만 relative로 변경하고 마킹 — detach 시 원복.
     const cs = window.getComputedStyle(container);
-    if (cs.position === 'static') {
+    if (cs.position === 'static' && !container.dataset.isyOriginalPosition) {
+      container.dataset.isyOriginalPosition = 'static';
       container.style.position = 'relative';
     }
 
@@ -78,6 +83,11 @@
     badge.style.left = 'auto';
     badge.style.zIndex = String(window.ISY.CONSTANTS.BADGE_Z_INDEX);
 
+    const targetRect = target.getBoundingClientRect();
+    if (targetRect.width > 0 && targetRect.width < COMPACT_WIDTH_THRESHOLD) {
+      badge.classList.add('isy-badge-compact');
+    }
+
     if (isInstagram()) {
       badge.classList.add('isy-badge-hidden');
     }
@@ -87,12 +97,26 @@
     containerBadges.set(container, stack);
     activeBadges.set(target, { badge, container });
 
+    // YouTube 등 가상화 환경에서 같은 <img>가 다른 콘텐츠로 재활용될 때, observer가 src
+    // 변경을 감지해 이 스냅샷과 비교 후 배지를 떼낼 수 있도록 시점 src를 저장한다.
+    if (target.tagName === 'IMG' || target.tagName === 'VIDEO') {
+      target.dataset.isyBadgedSrc = target.currentSrc || target.src || '';
+    }
+
     if (isInstagram()) {
       getVisibilityObserver().observe(target);
       requestAnimationFrame(updateAllInstagramVisibility);
     }
 
     return true;
+  }
+
+  function restoreContainerPosition(container) {
+    if (!container || !container.dataset || container.dataset.isyOriginalPosition !== 'static') return;
+    const remaining = containerBadges.get(container);
+    if (remaining && remaining.length > 0) return;
+    container.style.position = '';
+    delete container.dataset.isyOriginalPosition;
   }
 
   function updateAllInstagramVisibility() {
@@ -122,12 +146,19 @@
   }
 
   function removeAllBadges() {
-    for (const [target, { badge }] of activeBadges) {
+    const touchedContainers = new Set();
+    for (const [target, { badge, container }] of activeBadges) {
       visibilityObserver?.unobserve(target);
       if (badge.isConnected) badge.remove();
       if (target.dataset) delete target.dataset.isyBadged;
+      if (container) touchedContainers.add(container);
     }
     activeBadges.clear();
+    // 모든 배지를 제거했으니 stack도 비워야 restoreContainerPosition이 동작.
+    for (const container of touchedContainers) {
+      containerBadges.set(container, []);
+      restoreContainerPosition(container);
+    }
     document.querySelectorAll('.isy-detail-overlay').forEach(el => el.remove());
     window.removeEventListener('scroll', onScroll, true);
     window.removeEventListener('resize', onResize);
@@ -147,6 +178,7 @@
       if (idx >= 0) stack.splice(idx, 1);
     }
     if (target.dataset) delete target.dataset.isyBadged;
+    restoreContainerPosition(container);
     return true;
   }
 

@@ -43,6 +43,16 @@
           const target = mutation.target;
           if (target && target.nodeType === Node.ELEMENT_NODE && !window.ISY.isExtensionElement(target)) {
             if (target.tagName === 'IMG' || target.tagName === 'VIDEO' || target.tagName === 'SOURCE') {
+              // 가상화로 재활용된 <img>의 src가 새 콘텐츠로 바뀌면, 이전 결과 배지를 떼서
+              // 재분석된 결과가 화면에 새로 그려지게 한다. 같은 URL로 잠깐 돌아오는
+              // 깜빡임은 isyBadgedSrc 비교로 무시.
+              if (window.ISY.badges && target.dataset && target.dataset.isyBadged) {
+                const prevSrc = target.dataset.isyBadgedSrc || '';
+                const nextSrc = target.currentSrc || target.src || '';
+                if (prevSrc && nextSrc && prevSrc !== nextSrc) {
+                  window.ISY.badges.detach(target);
+                }
+              }
               hasNewMedia = true;
             }
           }

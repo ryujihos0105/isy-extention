@@ -152,7 +152,10 @@
 
   function getResultsByLevel(level) {
     return Array.from(ISY.state.results.values())
-      .filter(result => result.level === level)
+      .filter(result => {
+        if (level === 'low') return result.level === 'low' || result.level === 'uncertain';
+        return result.level === level;
+      })
       .filter(result => result.element && result.element.isConnected);
   }
 
@@ -232,7 +235,8 @@
       case 'GET_STATE': {
         const allResults = Array.from(ISY.state.results.values());
         const highCount = allResults.filter(r => r.level === 'high').length;
-        const lowCount = allResults.filter(r => r.level === 'low').length;
+        // uncertain(애매)은 사용자 관점에서 "확실히 의심 아님"이므로 low로 묶어 카운트.
+        const lowCount = allResults.filter(r => r.level === 'low' || r.level === 'uncertain').length;
         const failedCount = allResults.filter(r => r.level === 'failed').length;
         sendResponse({
           autoMode: false,
@@ -243,9 +247,7 @@
           badgeCount: ISY.badges.getCount(),
           highCount,
           lowCount,
-          failedCount,
-          fakeCount: highCount,
-          realCount: lowCount
+          failedCount
         });
         return false;
       }
