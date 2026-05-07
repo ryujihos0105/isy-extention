@@ -217,9 +217,274 @@
   function scanAfterUserInteraction() {
     if (!analysisStarted) return;
     setTimeout(() => {
+      restoreResultBadges();
       if (ISY.badges.refreshVisibility) ISY.badges.refreshVisibility();
       analyzeItems(getCurrentItems().allItems);
     }, 450);
+  }
+
+  function restoreResultBadges() {
+    const items = getCurrentItems().allItems;
+    for (const item of items) {
+      if (item.mediaType === 'text') continue;
+      const key = getItemKey(item);
+      const stored = ISY.state.results.get(key);
+      if (!stored || !item.element || !item.element.isConnected) continue;
+      if (item.element.dataset?.isyBadged) continue;
+
+      const result = stored.level === 'failed'
+        ? {
+          level: 'failed',
+          media_type: stored.mediaType || item.mediaType,
+          error: stored.error || '분석 실패'
+        }
+        : {
+          fake_probability: stored.fakeProb || 0,
+          media_type: stored.mediaType || item.mediaType
+        };
+
+      ISY.ui.showResultBadge(item.element, result, key);
+    }
+  }
+
+  let pickModeCleanup = null;
+
+  function getVisibleRect(element) {
+    if (!element || !element.isConnected) return null;
+    const rect = element.getBoundingClientRect();
+    const media = element.querySelector?.('img, video');
+    const mediaRect = media?.getBoundingClientRect();
+    const sourceRect = mediaRect && mediaRect.width > 1 && mediaRect.height > 1 ? mediaRect : rect;
+
+    let left = Math.max(0, sourceRect.left);
+    let top = Math.max(0, sourceRect.top);
+    let right = Math.min(window.innerWidth, sourceRect.right);
+    let bottom = Math.min(window.innerHeight, sourceRect.bottom);
+
+    let parent = (media || element).parentElement;
+    while (parent && parent !== document.body && parent !== document.documentElement) {
+      const style = window.getComputedStyle(parent);
+      const clipsX = style.overflowX !== 'visible' && style.overflowX !== 'clip-visible';
+      const clipsY = style.overflowY !== 'visible' && style.overflowY !== 'clip-visible';
+      if (clipsX || clipsY) {
+        const parentRect = parent.getBoundingClientRect();
+        if (clipsX) {
+          left = Math.max(left, parentRect.left);
+          right = Math.min(right, parentRect.right);
+        }
+        if (clipsY) {
+          top = Math.max(top, parentRect.top);
+          bottom = Math.min(bottom, parentRect.bottom);
+        }
+      }
+      parent = parent.parentElement;
+    }
+
+    const width = right - left;
+    const height = bottom - top;
+
+    if (width <= 1 || height <= 1) return null;
+    return { left, top, right, bottom, width, height };
+  }
+
+  function getCandidateForPoint(candidates, clientX, clientY) {
+    let best = null;
+    let bestArea = Infinity;
+
+    for (const candidate of candidates) {
+      const rect = candidate.rect;
+      if (!rect) continue;
+      if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+        continue;
+      }
+      const area = Math.max(1, rect.width * rect.height);
+      if (area < bestArea) {
+        best = candidate;
+        bestArea = area;
+      }
+    }
+
+    return best;
+  }
+
+  function showPickToast(text) {
+    let toast = document.querySelector('.isy-pick-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.className = 'isy-pick-toast';
+      toast.setAttribute('role', 'status');
+      document.body.appendChild(toast);
+    }
+    toast.textContent = text;
+  }
+
+  function stopPickMode() {
+    if (pickModeCleanup) {
+      pickModeCleanup();
+      pickModeCleanup = null;
+    }
+  }
+
+  function startPickAnalysis() {
+    stopPickMode();
+
+    const initialItems = getCurrentItems().allItems;
+    if (initialItems.length === 0) {
+      return { ok: false, error: '분석할 이미지나 영상을 찾지 못했습니다.' };
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'isy-pick-overlay';
+    document.documentElement.appendChild(overlay);
+
+    const candidates = [];
+    const candidatesByKey = new Map();
+
+    function createCandidate(item) {
+      const key = getItemKey(item);
+      const existing = candidatesByKey.get(key);
+      if (existing) {
+        existing.item = item;
+        return existing;
+      }
+
+      const marker = document.createElement('div');
+      marker.className = 'isy-pick-candidate';
+      overlay.appendChild(marker);
+
+      const candidate = { key, item, rect: null, marker };
+      candidates.push(candidate);
+      candidatesByKey.set(key, candidate);
+      return candidate;
+    }
+
+    function syncCandidates() {
+      getCurrentItems().allItems.forEach(createCandidate);
+    }
+
+    function updateCandidateMarker(candidate) {
+      const rect = getVisibleRect(candidate.item.element);
+      candidate.rect = rect;
+      if (!rect) {
+        candidate.marker.hidden = true;
+        return;
+      }
+      candidate.marker.hidden = false;
+      candidate.marker.style.left = `${rect.left}px`;
+      candidate.marker.style.top = `${rect.top}px`;
+      candidate.marker.style.width = `${rect.width}px`;
+      candidate.marker.style.height = `${rect.height}px`;
+    }
+
+    function updateCandidateMarkers() {
+      syncCandidates();
+      candidates.forEach(updateCandidateMarker);
+    }
+
+    initialItems.forEach(createCandidate);
+    updateCandidateMarkers();
+
+    let hovered = null;
+    showPickToast('파란 박스를 계속 클릭해 원하는 항목만 분석하세요. Esc로 종료합니다.');
+    document.body.classList.add('isy-pick-mode');
+
+    function setHovered(item) {
+      const next = item || null;
+      if (hovered === next) return;
+      if (hovered) {
+        hovered.marker?.classList.remove('isy-pick-candidate-active');
+        if (hovered.item.element?.isConnected) hovered.item.element.classList.remove('isy-pick-target');
+      }
+      hovered = next;
+      const hasTarget = hovered && hovered.item.element?.isConnected;
+      overlay.classList.toggle('isy-pick-overlay-ready', !!hasTarget);
+      overlay.classList.toggle('isy-pick-overlay-empty', !hasTarget);
+      if (hasTarget) {
+        hovered.marker?.classList.add('isy-pick-candidate-active');
+        hovered.item.element.classList.add('isy-pick-target');
+        showPickToast('선택 가능: 클릭하면 이 항목을 분석합니다. 계속 선택할 수 있고 Esc로 종료합니다.');
+      } else {
+        showPickToast('파란 박스가 있는 이미지나 영상 위로 마우스를 이동하세요. Esc로 취소할 수 있습니다.');
+      }
+    }
+
+    function cleanup() {
+      document.removeEventListener('mousemove', onMouseMove, true);
+      window.removeEventListener('scroll', onViewportChange, true);
+      window.removeEventListener('resize', onViewportChange, true);
+      document.removeEventListener('pointerdown', onPointerBlock, true);
+      document.removeEventListener('mousedown', onPointerBlock, true);
+      document.removeEventListener('mouseup', onPointerBlock, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
+      document.removeEventListener('click', onClick, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.body.classList.remove('isy-pick-mode');
+      if (hovered && hovered.item.element?.isConnected) hovered.item.element.classList.remove('isy-pick-target');
+      if (overlay.isConnected) overlay.remove();
+      document.querySelectorAll('.isy-pick-toast').forEach(el => el.remove());
+    }
+
+    function onMouseMove(event) {
+      updateCandidateMarkers();
+      setHovered(getCandidateForPoint(candidates, event.clientX, event.clientY));
+    }
+
+    function onViewportChange() {
+      updateCandidateMarkers();
+      restoreResultBadges();
+      if (hovered && !hovered.rect) setHovered(null);
+    }
+
+    function blockEvent(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    }
+
+    function onPointerBlock(event) {
+      blockEvent(event);
+    }
+
+    function analyzePickedTarget(event) {
+      const candidate = getCandidateForPoint(candidates, event.clientX, event.clientY);
+      if (!candidate) return;
+      blockEvent(event);
+      const item = candidate.item;
+
+      const key = getItemKey(item);
+      if (item.element?.dataset?.isyBadged) {
+        ISY.badges.detach(item.element);
+      }
+      ISY.state.analyzedUrls.delete(key);
+      ISY.state.results.delete(key);
+      analyzeItems([item], { force: true });
+      showPickToast('분석을 시작했습니다. 다른 파란 박스도 계속 선택할 수 있습니다. Esc로 종료합니다.');
+    }
+
+    function onPointerUp(event) {
+      analyzePickedTarget(event);
+    }
+
+    function onClick(event) {
+      blockEvent(event);
+    }
+
+    function onKeyDown(event) {
+      if (event.key === 'Escape') stopPickMode();
+    }
+
+    document.addEventListener('mousemove', onMouseMove, true);
+    window.addEventListener('scroll', onViewportChange, true);
+    window.addEventListener('resize', onViewportChange, true);
+    document.addEventListener('pointerdown', onPointerBlock, true);
+    document.addEventListener('mousedown', onPointerBlock, true);
+    document.addEventListener('mouseup', onPointerBlock, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    pickModeCleanup = cleanup;
+
+    return { ok: true };
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -252,19 +517,8 @@
         return false;
       }
 
-      case 'SCAN_PAGE': {
-        const { mediaItems, textItems } = getCurrentItems();
-        sendResponse({
-          count: mediaItems.length + textItems.length,
-          mediaCount: mediaItems.length,
-          textCount: textItems.length,
-          adapter: adapter.name,
-          items: mediaItems.map(i => ({ url: i.url, mediaType: i.mediaType }))
-        });
-        return false;
-      }
-
       case 'ANALYZE_ALL': {
+        stopPickMode();
         analysisStarted = true;
         startFollowupScanning();
         const { mediaItems, textItems, allItems } = getCurrentItems();
@@ -272,6 +526,10 @@
         sendResponse({ count: mediaItems.length + textItems.length });
         return false;
       }
+
+      case 'START_PICK_ANALYSIS':
+        sendResponse(startPickAnalysis());
+        return false;
 
       case 'FOCUS_RESULT':
         sendResponse(focusResult(message.level));
@@ -284,6 +542,7 @@
       }
 
       case 'STOP_ANALYSIS': {
+        stopPickMode();
         analysisStarted = false;
         followupObserverStarted = false;
         analyzeQueue.length = 0;  // 대기 중이던 항목들 폐기
@@ -298,6 +557,22 @@
         sendResponse({ ok: true });
         return false;
       }
+
+      case 'CLEAR_RESULTS':
+        stopPickMode();
+        analysisStarted = false;
+        followupObserverStarted = false;
+        analyzeQueue.length = 0;
+        resetPageState();
+        if (ISY.observer && ISY.observer.stopAll) {
+          ISY.observer.stopAll();
+        }
+        try {
+          chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' })
+            .catch(() => {});
+        } catch {}
+        sendResponse({ ok: true });
+        return false;
 
       case 'ANALYSIS_RESULT': {
         const targetEl = Array.from(document.querySelectorAll('img, video'))
@@ -318,4 +593,16 @@
       scanAfterUserInteraction();
     }
   }, true);
+
+  let restoreTimer = null;
+  function scheduleRestoreResultBadges() {
+    if (ISY.state.results.size === 0 || restoreTimer) return;
+    restoreTimer = setTimeout(() => {
+      restoreTimer = null;
+      restoreResultBadges();
+    }, 120);
+  }
+
+  window.addEventListener('scroll', scheduleRestoreResultBadges, true);
+  window.addEventListener('resize', scheduleRestoreResultBadges, true);
 })();

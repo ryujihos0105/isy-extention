@@ -50,19 +50,22 @@
 
     <main class="actions">
       <div class="action-group">
-        <button id="analyze-all-btn" class="primary" aria-label="현재 페이지의 콘텐츠 분석">
-          현재 페이지 분석
+        <button id="analyze-all-btn" class="primary" aria-label="페이지의 모든 콘텐츠 분석">
+          전체 콘텐츠 분석
         </button>
-        <span class="btn-hint">페이지의 모든 콘텐츠를 즉시 분석</span>
+        <span class="btn-hint">페이지에서 찾은 모든 콘텐츠를 분석</span>
       </div>
       <div class="action-group">
-        <button id="scan-btn" class="secondary" aria-label="분석 가능한 콘텐츠 개수 확인">
-          분석 가능 항목 확인
+        <button id="analyze-selected-btn" class="secondary" aria-label="선택한 콘텐츠만 분석">
+          선택해서 분석
         </button>
-        <span class="btn-hint">분석은 시작하지 않고 개수만 미리 확인</span>
+        <span class="btn-hint">파란 박스를 계속 클릭해 원하는 항목만 분석</span>
       </div>
       <button id="retry-failed-btn" class="secondary hidden" aria-label="분석 실패 항목 재시도" disabled>
         실패 재시도
+      </button>
+      <button id="clear-results-btn" class="secondary hidden" aria-label="화면의 분석 라벨 숨기기">
+        라벨 숨기기
       </button>
       <button id="stop-analysis-btn" class="secondary hidden" aria-label="자동 분석 중단">
         분석 중단

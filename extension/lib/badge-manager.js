@@ -88,10 +88,6 @@
       badge.classList.add('isy-badge-compact');
     }
 
-    if (isInstagram()) {
-      badge.classList.add('isy-badge-hidden');
-    }
-
     container.appendChild(badge);
     stack.push({ target, badge });
     containerBadges.set(container, stack);
@@ -101,11 +97,6 @@
     // 변경을 감지해 이 스냅샷과 비교 후 배지를 떼낼 수 있도록 시점 src를 저장한다.
     if (target.tagName === 'IMG' || target.tagName === 'VIDEO') {
       target.dataset.isyBadgedSrc = target.currentSrc || target.src || '';
-    }
-
-    if (isInstagram()) {
-      getVisibilityObserver().observe(target);
-      requestAnimationFrame(updateAllInstagramVisibility);
     }
 
     return true;
@@ -121,27 +112,8 @@
 
   function updateAllInstagramVisibility() {
     if (!isInstagram()) return;
-
-    const records = Array.from(activeBadges.entries())
-      .filter(([target]) => target.isConnected)
-      .map(([target, record]) => {
-        const rect = target.getBoundingClientRect();
-        const viewportW = window.innerWidth || document.documentElement.clientWidth;
-        const viewportH = window.innerHeight || document.documentElement.clientHeight;
-        const visibleW = Math.max(0, Math.min(rect.right, viewportW) - Math.max(rect.left, 0));
-        const visibleH = Math.max(0, Math.min(rect.bottom, viewportH) - Math.max(rect.top, 0));
-        const ratio = (visibleW * visibleH) / Math.max(1, rect.width * rect.height);
-        const centerDistance = Math.abs((rect.left + rect.width / 2) - viewportW / 2);
-        return { target, record, ratio, centerDistance };
-      })
-      .filter(item => item.ratio >= 0.45 && isVisuallyCentered(item.target))
-      .sort((a, b) => b.ratio - a.ratio || a.centerDistance - b.centerDistance);
-
     for (const [, record] of activeBadges) {
-      record.badge.classList.add('isy-badge-hidden');
-    }
-    if (records[0]) {
-      records[0].record.badge.classList.remove('isy-badge-hidden');
+      record.badge.classList.remove('isy-badge-hidden');
     }
   }
 

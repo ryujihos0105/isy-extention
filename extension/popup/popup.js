@@ -2,8 +2,8 @@
 // ISY Popup Script
 // ============================================
 
-const scanBtn = document.getElementById('scan-btn');
 const analyzeAllBtn = document.getElementById('analyze-all-btn');
+const analyzeSelectedBtn = document.getElementById('analyze-selected-btn');
 const statusEl = document.getElementById('status');
 const adapterNameEl = document.getElementById('adapter-name');
 const resultsSummary = document.getElementById('results-summary');
@@ -15,6 +15,7 @@ const focusHighBtn = document.getElementById('focus-high-btn');
 const focusLowBtn = document.getElementById('focus-low-btn');
 const focusFailedBtn = document.getElementById('focus-failed-btn');
 const retryFailedBtn = document.getElementById('retry-failed-btn');
+const clearResultsBtn = document.getElementById('clear-results-btn');
 const stopAnalysisBtn = document.getElementById('stop-analysis-btn');
 const watchingIndicator = document.getElementById('watching-indicator');
 
@@ -110,6 +111,9 @@ function updateResultsSummary(state) {
     retryFailedBtn.disabled = failed <= 0;
     retryFailedBtn.classList.toggle('hidden', failed <= 0);
   }
+  if (clearResultsBtn) {
+    clearResultsBtn.classList.toggle('hidden', total <= 0);
+  }
 
   summaryNote.textContent = pending > 0
     ? `분석 ${total}개 완료, ${pending}개 진행 중 · 숫자를 누르면 해당 콘텐츠로 이동합니다.`
@@ -124,7 +128,7 @@ async function syncState() {
   }
   if (isRestrictedUrl(tab.url)) {
     adapterNameEl.textContent = '사용 불가';
-    [scanBtn, analyzeAllBtn].forEach(btn => { btn.disabled = true; });
+    [analyzeAllBtn, analyzeSelectedBtn].forEach(btn => { btn.disabled = true; });
     return;
   }
 
@@ -143,21 +147,6 @@ async function syncState() {
     console.error(err);
   }
 }
-
-scanBtn.addEventListener('click', async () => {
-  setStatus('분석 가능한 항목을 확인하는 중', 'loading');
-  const res = await safeSend({ type: 'SCAN_PAGE' });
-  if (res) {
-    if (res.count === 0) {
-      setStatus(`${res.adapter}에서 분석할 콘텐츠를 찾지 못했습니다.`, 'error');
-      return;
-    }
-    const detail = res.textCount > 0
-      ? `미디어 ${res.mediaCount}개, 텍스트 ${res.textCount}개`
-      : `${res.count}개`;
-    setStatus(`${res.adapter}에서 ${detail}를 찾았습니다.`, 'success');
-  }
-});
 
 async function focusResult(level) {
   const labels = {
@@ -201,6 +190,23 @@ if (stopAnalysisBtn) {
       setStatus('자동 분석을 중단했습니다.', 'success');
       stopAnalysisBtn.classList.add('hidden');
     }
+  });
+}
+
+if (clearResultsBtn) {
+  clearResultsBtn.addEventListener('click', async () => {
+    const res = await safeSend({ type: 'CLEAR_RESULTS' });
+    if (!res || !res.ok) {
+      setStatus('라벨을 숨기지 못했습니다.', 'error');
+      return;
+    }
+    stopPolling();
+    setWatching(false);
+    resultsSummary.classList.add('hidden');
+    summaryNote.classList.add('hidden');
+    retryFailedBtn?.classList.add('hidden');
+    clearResultsBtn.classList.add('hidden');
+    setStatus('화면의 분석 라벨을 숨겼습니다.', 'success');
   });
 }
 
@@ -258,7 +264,7 @@ function stopPolling(opts) {
 }
 
 analyzeAllBtn.addEventListener('click', async () => {
-  setStatus('현재 페이지를 분석하는 중', 'loading');
+  setStatus('페이지의 콘텐츠를 분석하는 중', 'loading');
   const res = await safeSend({ type: 'ANALYZE_ALL' });
   if (res) {
     if (res.count === 0) {
@@ -268,6 +274,17 @@ analyzeAllBtn.addEventListener('click', async () => {
     setStatus(`${res.count}개 항목 분석을 시작했습니다. 새로 보이는 콘텐츠도 계속 확인합니다.`, 'loading');
     startPolling();
   }
+});
+
+analyzeSelectedBtn.addEventListener('click', async () => {
+  setStatus('분석할 콘텐츠를 페이지에서 선택하세요.', 'loading');
+  const res = await safeSend({ type: 'START_PICK_ANALYSIS' });
+  if (!res) return;
+  if (!res.ok) {
+    setStatus(res.error || '선택 모드를 시작하지 못했습니다.', 'error');
+    return;
+  }
+  setStatus('파란 박스를 계속 클릭해 원하는 항목만 분석하세요. Esc로 종료합니다.', 'success');
 });
 
 window.addEventListener('unload', stopPolling);
