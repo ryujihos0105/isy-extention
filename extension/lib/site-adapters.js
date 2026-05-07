@@ -68,6 +68,20 @@
     '.se-main-container p'
   ];
 
+  // 광고/추천/관련 영역은 본문 셀렉터에 함께 잡히기 쉬워 분석 대상에서 명시적으로 제외.
+  const naverCommonExcludes = ['header', 'footer', 'nav', '.gnb_area'];
+  const naverAdExcludes = ['.ad_area', '.ad_section', '.ad_wrap', '.commercial_area'];
+  const naverNewsExcludes = [
+    ...naverCommonExcludes, ...naverAdExcludes,
+    '.relation_lst', '.relation_news', '.recommend_area', '.cluster_box'
+  ];
+  const naverBlogExcludes = [
+    ...naverCommonExcludes, ...naverAdExcludes,
+    '.related_post', '.recommend_post', '.banner_area'
+  ];
+  const naverCafeExcludes = [...naverCommonExcludes, ...naverAdExcludes];
+  const naverSearchExcludes = [...naverCommonExcludes, ...naverAdExcludes, '.ly_option'];
+
   const naverBaseAdapter = {
     name: 'NAVER',
     imageSelectors: [
@@ -89,7 +103,7 @@
       '.news_area a',
       '.media_area a'
     ],
-    excludeParents: ['header', 'footer', 'nav', '.gnb_area'],
+    excludeParents: naverCommonExcludes,
     minSize: 120
   };
 
@@ -143,29 +157,24 @@
     'whale.naver.com': 'NAVER Whale'
   };
 
+  const youtubeThumbnailSelectors = [
+    'ytd-thumbnail img[src*="ytimg.com"]',
+    'ytd-rich-item-renderer img[src*="ytimg.com"]',
+    'ytd-video-renderer img[src*="ytimg.com"]',
+    'ytd-compact-video-renderer img[src*="ytimg.com"]',
+    'ytd-grid-video-renderer img[src*="ytimg.com"]',
+    'ytd-reel-item-renderer img[src*="ytimg.com"]',
+    'ytd-search-pyv-renderer img[src*="ytimg.com"]',
+    'ytd-playlist-renderer img[src*="ytimg.com"]',
+    'ytd-playlist-video-renderer img[src*="ytimg.com"]',
+    'ytd-playlist-panel-video-renderer img[src*="ytimg.com"]',
+    'yt-lockup-view-model img[src*="ytimg.com"]',
+    'img.ytCoreImageHost[src*="ytimg.com"]'
+  ];
+
   const adapters = {
     'instagram.com': {
       name: 'Instagram',
-      imageSelectors: [
-        'article img[src*="cdninstagram"]',
-        'article img[srcset]',
-        'div[role="dialog"] img',
-        'main a[href*="/reel/"] img',
-        'main a[href*="/reels/"] img',
-        'main a[href*="/p/"] img',
-        'main a[href*="/explore/"] img',
-        'main a[role="link"] img',
-        'main div[role="button"] img',
-        'main div[style*="transform"] img',
-        'main img[srcset]',
-        'main img[src*="cdninstagram"]'
-      ],
-      videoSelectors: ['article video', 'div[role="dialog"] video'],
-      textSelectors: [
-        'article h1',
-        'article span[dir="auto"]',
-        'div[role="dialog"] span[dir="auto"]'
-      ],
       minSize: 200,
       thumbnailSelectors: [
         'a[href*="/reel/"] img',
@@ -176,8 +185,57 @@
         'main div[role="button"] img',
         'main div[style*="transform"] img'
       ],
-      containerFinder: target =>
-        target.closest('article') || target.parentElement || document.body
+      // 라이트박스(게시물 클릭 시 모달) 활성 시 배경 피드와 dialog 양쪽이 잡히는 걸 막기 위해 페이지 분기.
+      getPageType: () => {
+        const dialog = document.querySelector('body div[role="dialog"]:not([aria-hidden="true"]) img');
+        if (dialog) return 'dialog';
+        if (location.pathname.startsWith('/reels') || location.pathname.startsWith('/reel/')) {
+          return 'reel';
+        }
+        return 'feed';
+      },
+      pages: {
+        dialog: {
+          imageSelectors: [
+            'div[role="dialog"] img[src*="cdninstagram"]',
+            'div[role="dialog"] img[srcset]',
+            'div[role="dialog"] img'
+          ],
+          videoSelectors: ['div[role="dialog"] video'],
+          textSelectors: ['div[role="dialog"] span[dir="auto"]']
+        },
+        reel: {
+          imageSelectors: [
+            'main a[href*="/reel/"] img',
+            'main a[href*="/reels/"] img',
+            'section main img[src*="cdninstagram"]'
+          ],
+          videoSelectors: ['main video', 'section main video'],
+          textSelectors: ['main h1', 'main span[dir="auto"]']
+        },
+        feed: {
+          imageSelectors: [
+            'article img[src*="cdninstagram"]',
+            'article img[srcset]',
+            'main a[href*="/reel/"] img',
+            'main a[href*="/reels/"] img',
+            'main a[href*="/p/"] img',
+            'main a[href*="/explore/"] img',
+            'main a[role="link"] img',
+            'main div[role="button"] img',
+            'main div[style*="transform"] img',
+            'main img[srcset]',
+            'main img[src*="cdninstagram"]'
+          ],
+          videoSelectors: ['article video', 'main video'],
+          textSelectors: ['article h1', 'article span[dir="auto"]']
+        }
+      },
+      containerFinder: target => {
+        const dialog = target.closest('div[role="dialog"]');
+        if (dialog) return dialog;
+        return target.closest('article') || target.parentElement || document.body;
+      }
     },
 
     'x.com': {
@@ -197,6 +255,11 @@
       getPageType: () => {
         if (location.pathname.startsWith('/shorts/')) return 'shorts';
         if (location.pathname.startsWith('/watch')) return 'watch';
+        if (location.pathname.startsWith('/playlist')
+            || location.pathname.startsWith('/feed/playlists')
+            || location.pathname.startsWith('/feed/library')) {
+          return 'playlist';
+        }
         return 'home';
       },
       pages: {
@@ -214,11 +277,13 @@
             'yt-lockup-view-model img[src*="ytimg.com"]',
             'img.ytCoreImageHost[src*="ytimg.com"]'
           ],
+          thumbnailSelectors: youtubeThumbnailSelectors,
           videoSelectors: [],
           textSelectors: []
         },
         watch: {
-          imageSelectors: [],
+          imageSelectors: youtubeThumbnailSelectors,
+          thumbnailSelectors: youtubeThumbnailSelectors,
           videoSelectors: ['video.html5-main-video'],
           textSelectors: [
             '#title h1',
@@ -238,10 +303,22 @@
             'ytd-reel-player-header-renderer h2',
             'ytd-comment-renderer #content-text'
           ]
+        },
+        playlist: {
+          imageSelectors: [
+            'ytd-playlist-video-renderer img[src*="ytimg.com"]',
+            'ytd-playlist-panel-video-renderer img[src*="ytimg.com"]',
+            'ytd-playlist-renderer img[src*="ytimg.com"]',
+            'yt-lockup-view-model img[src*="ytimg.com"]',
+            'img.ytCoreImageHost[src*="ytimg.com"]'
+          ],
+          thumbnailSelectors: youtubeThumbnailSelectors,
+          videoSelectors: [],
+          textSelectors: []
         }
       },
       containerFinder: target =>
-        target.closest('ytd-thumbnail, ytd-reel-video-renderer, yt-thumbnail-view-model, yt-lockup-view-model')
+        target.closest('ytd-thumbnail, ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytd-reel-item-renderer, ytd-search-pyv-renderer, ytd-playlist-renderer, ytd-reel-video-renderer, ytd-playlist-video-renderer, ytd-playlist-panel-video-renderer, yt-thumbnail-view-model, yt-lockup-view-model')
         || target.parentElement
         || document.body
     },
@@ -251,6 +328,7 @@
       imageSelectors: naverArticleSelectors,
       videoSelectors: ['#dic_area video', '#newsct_article video', '.article_body video'],
       textSelectors: naverTextSelectors,
+      excludeParents: naverNewsExcludes,
       minSize: 180
     },
 
@@ -259,6 +337,7 @@
       imageSelectors: naverArticleSelectors,
       videoSelectors: ['#dic_area video', '#newsct_article video', '.article_body video'],
       textSelectors: naverTextSelectors,
+      excludeParents: naverNewsExcludes,
       minSize: 180
     },
 
@@ -267,6 +346,7 @@
       imageSelectors: naverArticleSelectors,
       videoSelectors: ['video', '.article_body video'],
       textSelectors: naverTextSelectors,
+      excludeParents: naverNewsExcludes,
       minSize: 180
     },
 
@@ -275,6 +355,7 @@
       imageSelectors: naverArticleSelectors,
       videoSelectors: ['video', '.article_body video'],
       textSelectors: naverTextSelectors,
+      excludeParents: naverNewsExcludes,
       minSize: 180
     },
 
@@ -283,6 +364,7 @@
       imageSelectors: naverBlogSelectors,
       videoSelectors: ['.se-video-resource video', '#postViewArea video'],
       textSelectors: naverBlogTextSelectors,
+      excludeParents: naverBlogExcludes,
       minSize: 180
     },
 
@@ -291,6 +373,7 @@
       imageSelectors: naverBlogSelectors,
       videoSelectors: ['.se-video-resource video', '#postViewArea video'],
       textSelectors: naverBlogTextSelectors,
+      excludeParents: naverBlogExcludes,
       minSize: 180
     },
 
@@ -301,7 +384,7 @@
       videoSelectors: ['video'],
       textSelectors: naverSearchTextSelectors,
       minSize: 120,
-      excludeParents: ['header', 'footer', 'nav', '.ly_option', '.gnb_area']
+      excludeParents: naverSearchExcludes
     },
 
     'cafe.naver.com': {
@@ -319,6 +402,7 @@
         '#tbody p',
         '.article_viewer p'
       ],
+      excludeParents: naverCafeExcludes,
       minSize: 160
     },
 

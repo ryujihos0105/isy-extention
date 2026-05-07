@@ -7,9 +7,52 @@
   if (!window.ISY) return;
 
   const activeOverlays = new WeakMap();
-  const THRESHOLD = 0.5;
+  // 0.4~0.6 구간은 모델 신뢰도가 낮은 "애매" 영역으로 별도 표기.
+  const HIGH_THRESHOLD = 0.6;
+  const LOW_THRESHOLD = 0.4;
 
   const MEDIA_TYPE_LABELS = { image: '이미지', video: '영상', text: '텍스트' };
+
+  function isDebugDetailsEnabled() {
+    try {
+      return window.ISY_DEBUG_DETAILS === true
+        || window.localStorage?.getItem('isyDebugDetails') === 'true';
+    } catch {
+      return window.ISY_DEBUG_DETAILS === true;
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderDebugDetails(result, adapterName) {
+    if (!isDebugDetailsEnabled()) return '';
+
+    const mediaType = MEDIA_TYPE_LABELS[result.media_type] || result.media_type || 'content';
+    const rows = [
+      ['콘텐츠 유형', mediaType],
+      ['얼굴 크롭', result.crop_status],
+      ['모델', result.model || adapterName]
+    ].filter(([, value]) => value);
+
+    if (rows.length === 0) return '';
+
+    return `
+      <div class="isy-debug-details" aria-label="개발자 디버그 정보">
+        ${rows.map(([label, value]) => `
+          <div class="isy-metric">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
 
   function toUserMessage(raw) {
     if (!raw) return '알 수 없는 오류';
@@ -46,19 +89,38 @@
       };
     }
     const fakeProb = getFakeProbability(result);
-    const isHigh = fakeProb > THRESHOLD;
     const percent = Math.round(fakeProb * 100);
+    const isHigh = fakeProb >= HIGH_THRESHOLD;
+    const isUncertain = !isHigh && fakeProb >= LOW_THRESHOLD;
+
+    let level, title, badgeText, ariaText;
+    if (isHigh) {
+      level = 'high';
+      title = 'AI 가능성 높음';
+      badgeText = `의심 ${percent}%`;
+      ariaText = `AI 생성 가능성 ${percent}%, 상세 보기`;
+    } else if (isUncertain) {
+      level = 'uncertain';
+      title = 'AI 가능성 애매';
+      badgeText = `애매 ${percent}%`;
+      ariaText = `AI 생성 가능성 ${percent}%로 판정 애매, 상세 보기`;
+    } else {
+      level = 'low';
+      title = 'AI 가능성 낮음';
+      badgeText = '낮음';
+      ariaText = `AI 생성 가능성 낮음, ${percent}%, 상세 보기`;
+    }
+
     return {
       fakeProb,
       isHigh,
+      isUncertain,
       isFailed: false,
-      level: isHigh ? 'high' : 'low',
+      level,
       percent,
-      title: isHigh ? 'AI 가능성 높음' : 'AI 가능성 낮음',
-      badgeText: isHigh ? `의심 ${percent}%` : '낮음',
-      ariaText: isHigh
-        ? `AI 생성 가능성 ${percent}%, 상세 보기`
-        : `AI 생성 가능성 낮음, ${percent}%, 상세 보기`
+      title,
+      badgeText,
+      ariaText
     };
   }
 
@@ -117,6 +179,7 @@
     let levelClass;
     if (meta.isFailed) levelClass = 'isy-failed';
     else if (meta.isHigh) levelClass = 'isy-high';
+    else if (meta.isUncertain) levelClass = 'isy-uncertain';
     else levelClass = 'isy-low';
     badge.className = `isy-badge ${levelClass}`;
     badge.textContent = meta.badgeText;
@@ -205,13 +268,14 @@
       `;
     } else {
       const pctText = meta.fakeProb * 100;
-      const mediaType = MEDIA_TYPE_LABELS[result.media_type] || '콘텐츠';
+      const cardLevel = meta.level;
+      const iconChar = meta.isHigh ? '!' : (meta.isUncertain ? '?' : 'i');
 
       overlay.innerHTML = `
-        <div class="isy-detail-card ${meta.isHigh ? 'high' : 'low'}" role="dialog" aria-label="AI 생성 가능성 분석 결과">
+        <div class="isy-detail-card ${cardLevel}" role="dialog" aria-label="AI 생성 가능성 분석 결과">
           <button class="isy-close" aria-label="닫기">x</button>
           <h3>
-            <span class="isy-detail-icon" aria-hidden="true">${meta.isHigh ? '!' : 'i'}</span>
+            <span class="isy-detail-icon" aria-hidden="true">${iconChar}</span>
             ${meta.title}
           </h3>
           <p class="isy-explain">
@@ -223,24 +287,15 @@
               <strong class="isy-gauge-value">${pctText.toFixed(1)}%</strong>
             </div>
             <div class="isy-gauge-track" role="progressbar" aria-valuenow="${pctText.toFixed(1)}" aria-valuemin="0" aria-valuemax="100" aria-valuetext="AI 생성 가능성 ${pctText.toFixed(1)}%">
-              <div class="isy-gauge-fill ${meta.isHigh ? 'high' : 'low'}" style="width: ${pctText.toFixed(2)}%"></div>
-              <div class="isy-gauge-threshold" aria-hidden="true"></div>
+              <div class="isy-gauge-fill ${cardLevel}" style="width: ${pctText.toFixed(2)}%"></div>
+              <div class="isy-gauge-threshold-low" aria-hidden="true"></div>
+              <div class="isy-gauge-threshold-high" aria-hidden="true"></div>
             </div>
             <div class="isy-gauge-scale" aria-hidden="true">
-              <span>0%</span><span>기준값 50%</span><span>100%</span>
+              <span>0%</span><span>40%</span><span>60%</span><span>100%</span>
             </div>
           </div>
-          <div class="isy-metric">
-            <span>콘텐츠 유형</span>
-            <strong>${mediaType}</strong>
-          </div>
-          ${result.crop_status ? `
-            <div class="isy-metric">
-              <span>얼굴 크롭</span>
-              <strong>${result.crop_status}</strong>
-            </div>
-          ` : ''}
-          <div class="isy-source">모델: ${result.model || adapterName}</div>
+          ${renderDebugDetails(result, adapterName)}
         </div>
       `;
     }
