@@ -14,12 +14,25 @@
   }
 
   function getResultMeta(result) {
+    if (result && result.level === 'failed') {
+      return {
+        fakeProb: 0,
+        isHigh: false,
+        isFailed: true,
+        level: 'failed',
+        percent: 0,
+        title: '분석 실패',
+        badgeText: '실패',
+        ariaText: '분석 실패, 상세 보기'
+      };
+    }
     const fakeProb = getFakeProbability(result);
     const isHigh = fakeProb > THRESHOLD;
     const percent = Math.round(fakeProb * 100);
     return {
       fakeProb,
       isHigh,
+      isFailed: false,
       level: isHigh ? 'high' : 'low',
       percent,
       title: isHigh ? 'AI 가능성 높음' : 'AI 가능성 낮음',
@@ -42,16 +55,45 @@
     });
   }
 
+  function showLoadingBadge(targetElement, itemKey) {
+    if (!targetElement || !targetElement.isConnected) return;
+    if (targetElement.dataset && targetElement.dataset.isyBadged) return;
+    if (targetElement.dataset) targetElement.dataset.isyBadged = 'loading';
+
+    const badge = document.createElement('div');
+    badge.className = 'isy-badge isy-loading-badge';
+    badge.textContent = '분석 중';
+    badge.title = '분석 중';
+    badge.setAttribute('role', 'status');
+    badge.setAttribute('aria-label', '분석 중');
+    badge.dataset.isyLevel = 'loading';
+    if (itemKey) badge.dataset.isyItemKey = itemKey;
+
+    const ok = window.ISY.badges.attach(targetElement, badge);
+    if (!ok && targetElement.dataset) {
+      delete targetElement.dataset.isyBadged;
+    }
+  }
+
   function showResultBadge(targetElement, result, itemKey) {
     if (!targetElement || !targetElement.isConnected) return;
-    if (targetElement.dataset && targetElement.dataset.isyBadged === 'true') return;
-    if (targetElement.dataset) targetElement.dataset.isyBadged = 'true';
+    const ds = targetElement.dataset;
+    if (ds && ds.isyBadged === 'true') return;
+    // loading 배지가 붙어있으면 결과 배지로 교체
+    if (ds && ds.isyBadged === 'loading') {
+      window.ISY.badges.detach(targetElement);
+    }
+    if (ds) ds.isyBadged = 'true';
 
     const meta = getResultMeta(result);
     recordResult(itemKey, result, result.media_type || 'media', targetElement);
 
     const badge = document.createElement('div');
-    badge.className = `isy-badge ${meta.isHigh ? 'isy-high' : 'isy-low'}`;
+    let levelClass;
+    if (meta.isFailed) levelClass = 'isy-failed';
+    else if (meta.isHigh) levelClass = 'isy-high';
+    else levelClass = 'isy-low';
+    badge.className = `isy-badge ${levelClass}`;
     badge.textContent = meta.badgeText;
     badge.title = meta.ariaText;
     badge.setAttribute('role', 'button');
@@ -62,7 +104,7 @@
     function open(e) {
       e.preventDefault();
       e.stopPropagation();
-      showDetailOverlay(targetElement, result);
+      showDetailOverlay(targetElement, result, itemKey);
     }
     badge.addEventListener('click', open);
     badge.addEventListener('keydown', e => {
@@ -104,7 +146,7 @@
     function openText(e) {
       e.preventDefault();
       e.stopPropagation();
-      showDetailOverlay(element, result);
+      showDetailOverlay(element, result, itemKey);
     }
     badge.addEventListener('click', openText);
     badge.addEventListener('keydown', e => {
@@ -114,7 +156,7 @@
     element.appendChild(badge);
   }
 
-  function showDetailOverlay(targetElement, result) {
+  function showDetailOverlay(targetElement, result, itemKey) {
     const existing = activeOverlays.get(targetElement);
     if (existing && existing.isConnected) {
       existing.remove();
@@ -129,53 +171,71 @@
 
     const meta = getResultMeta(result);
     const adapterName = window.ISY.state.currentAdapter.name;
-    const pctText = meta.fakeProb * 100;
-    const mediaType = result.media_type || 'content';
-    const itemMeta = result.item_meta || {};
-    const analysisBasis = itemMeta.isThumbnail ? '썸네일 이미지 기준' : '원본/표시 이미지 기준';
-    const cacheText = result.fromCache ? '<div class="isy-note">캐시된 결과입니다.</div>' : '';
 
-    overlay.innerHTML = `
-      <div class="isy-detail-card ${meta.isHigh ? 'high' : 'low'}" role="dialog" aria-label="AI 생성 가능성 분석 결과">
-        <button class="isy-close" aria-label="닫기">x</button>
-        <h3>
-          <span class="isy-detail-icon" aria-hidden="true">${meta.isHigh ? '!' : 'i'}</span>
-          ${meta.title}
-        </h3>
-        <p class="isy-explain">
-          이 결과는 확정 판정이 아니라 모델이 계산한 AI 생성 가능성입니다.
-        </p>
-        <div class="isy-gauge-wrap">
-          <div class="isy-gauge-header">
-            <span>AI 생성 가능성</span>
-            <strong class="isy-gauge-value">${pctText.toFixed(1)}%</strong>
-          </div>
-          <div class="isy-gauge-track" role="progressbar" aria-valuenow="${pctText.toFixed(1)}" aria-valuemin="0" aria-valuemax="100">
-            <div class="isy-gauge-fill ${meta.isHigh ? 'high' : 'low'}" style="width: ${pctText.toFixed(2)}%"></div>
-            <div class="isy-gauge-threshold" aria-hidden="true"></div>
-          </div>
-          <div class="isy-gauge-scale" aria-hidden="true">
-            <span>0%</span><span>기준값 50%</span><span>100%</span>
-          </div>
+    if (meta.isFailed) {
+      const reason = (result && result.error) ? String(result.error) : '알 수 없는 오류';
+      const safeReason = reason
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      overlay.innerHTML = `
+        <div class="isy-detail-card failed" role="dialog" aria-label="분석 실패">
+          <button class="isy-close" aria-label="닫기">x</button>
+          <h3>
+            <span class="isy-detail-icon" aria-hidden="true">!</span>
+            분석 실패
+          </h3>
+          <p class="isy-explain">사유: ${safeReason}</p>
+          <button type="button" class="isy-retry-btn" aria-label="이 항목 재시도">재시도</button>
         </div>
-        <div class="isy-metric">
-          <span>콘텐츠 유형</span>
-          <strong>${mediaType}</strong>
-        </div>
-        <div class="isy-metric">
-          <span>분석 기준</span>
-          <strong>${analysisBasis}</strong>
-        </div>
-        ${result.crop_status ? `
+      `;
+    } else {
+      const pctText = meta.fakeProb * 100;
+      const mediaType = result.media_type || 'content';
+      const itemMeta = result.item_meta || {};
+      const analysisBasis = itemMeta.isThumbnail ? '썸네일 이미지 기준' : '원본/표시 이미지 기준';
+      const cacheText = result.fromCache ? '<div class="isy-note">캐시된 결과입니다.</div>' : '';
+
+      overlay.innerHTML = `
+        <div class="isy-detail-card ${meta.isHigh ? 'high' : 'low'}" role="dialog" aria-label="AI 생성 가능성 분석 결과">
+          <button class="isy-close" aria-label="닫기">x</button>
+          <h3>
+            <span class="isy-detail-icon" aria-hidden="true">${meta.isHigh ? '!' : 'i'}</span>
+            ${meta.title}
+          </h3>
+          <p class="isy-explain">
+            이 결과는 확정 판정이 아니라 모델이 계산한 AI 생성 가능성입니다.
+          </p>
+          <div class="isy-gauge-wrap">
+            <div class="isy-gauge-header">
+              <span>AI 생성 가능성</span>
+              <strong class="isy-gauge-value">${pctText.toFixed(1)}%</strong>
+            </div>
+            <div class="isy-gauge-track" role="progressbar" aria-valuenow="${pctText.toFixed(1)}" aria-valuemin="0" aria-valuemax="100">
+              <div class="isy-gauge-fill ${meta.isHigh ? 'high' : 'low'}" style="width: ${pctText.toFixed(2)}%"></div>
+              <div class="isy-gauge-threshold" aria-hidden="true"></div>
+            </div>
+            <div class="isy-gauge-scale" aria-hidden="true">
+              <span>0%</span><span>기준값 50%</span><span>100%</span>
+            </div>
+          </div>
           <div class="isy-metric">
-            <span>얼굴 크롭</span>
-            <strong>${result.crop_status}</strong>
+            <span>콘텐츠 유형</span>
+            <strong>${mediaType}</strong>
           </div>
-        ` : ''}
-        ${cacheText}
-        <div class="isy-source">모델: ${result.model || adapterName}</div>
-      </div>
-    `;
+          <div class="isy-metric">
+            <span>분석 기준</span>
+            <strong>${analysisBasis}</strong>
+          </div>
+          ${result.crop_status ? `
+            <div class="isy-metric">
+              <span>얼굴 크롭</span>
+              <strong>${result.crop_status}</strong>
+            </div>
+          ` : ''}
+          ${cacheText}
+          <div class="isy-source">모델: ${result.model || adapterName}</div>
+        </div>
+      `;
+    }
 
     overlay.style.position = 'fixed';
     overlay.style.top = '-9999px';
@@ -201,6 +261,19 @@
     }
 
     overlay.querySelector('.isy-close').addEventListener('click', closeOverlay);
+    const retryBtn = overlay.querySelector('.isy-retry-btn');
+    if (retryBtn && itemKey) {
+      retryBtn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        retryBtn.disabled = true;
+        retryBtn.textContent = '재시도 중…';
+        if (typeof window.ISY.retryFailedItems === 'function') {
+          window.ISY.retryFailedItems([itemKey]);
+        }
+        closeOverlay();
+      });
+    }
     document.addEventListener('keydown', onEscKey, true);
     setTimeout(() => document.addEventListener('click', onOutsideClick, true), 0);
     activeOverlays.set(targetElement, overlay);
@@ -305,6 +378,7 @@
 
   window.ISY.ui = {
     showResultBadge,
+    showLoadingBadge,
     showTextBadge,
     removeAllTextBadges,
     showAutoIndicator,

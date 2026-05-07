@@ -8,7 +8,7 @@ const RETRY_COUNT = 1;
 const RETRY_BACKOFF_MS = 1000;
 
 // 네트워크/일시 장애 대비.
-// - timeout(AbortError)과 외부 STOP은 retry하지 않는다.
+// - 외부 STOP은 즉시 throw (사용자 의도). 자체 timeout은 1회 retry (서버 큐 적체 흡수).
 // - 5xx 응답도 retry 대상으로 처리한다 (fetch는 5xx에서 reject하지 않으므로 별도 분기).
 // - timeout은 시도마다 새로 시작 (호출자가 누적 25s를 한번 거는 게 아니라, 시도당 25s를 보장).
 async function fetchWithRetry(url, options, externalSignal) {
@@ -36,7 +36,12 @@ async function fetchWithRetry(url, options, externalSignal) {
       return response;
     } catch (err) {
       lastErr = err;
-      if (err.name === 'AbortError') throw err;
+      if (err.name === 'AbortError') {
+        if (externalSignal?.aborted) throw err;
+        if (i === RETRY_COUNT) throw err;
+        await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS * 5));
+        continue;
+      }
       if (i === RETRY_COUNT) throw err;
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
     } finally {

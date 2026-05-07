@@ -209,7 +209,10 @@
             'ytd-grid-video-renderer img[src*="ytimg.com"]',
             'ytd-reel-item-renderer img[src*="ytimg.com"]',
             'ytd-search-pyv-renderer img[src*="ytimg.com"]',
-            'ytd-playlist-renderer img[src*="ytimg.com"]'
+            'ytd-playlist-renderer img[src*="ytimg.com"]',
+            // 신형 lockup 컴포넌트 (2024년 이후 YouTube 마이그레이션)
+            'yt-lockup-view-model img[src*="ytimg.com"]',
+            'img.ytCoreImageHost[src*="ytimg.com"]'
           ],
           videoSelectors: [],
           textSelectors: []
@@ -238,7 +241,9 @@
         }
       },
       containerFinder: target =>
-        target.closest('ytd-thumbnail, ytd-reel-video-renderer') || target.parentElement || document.body
+        target.closest('ytd-thumbnail, ytd-reel-video-renderer, yt-thumbnail-view-model, yt-lockup-view-model')
+        || target.parentElement
+        || document.body
     },
 
     'news.naver.com': {

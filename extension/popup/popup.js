@@ -16,6 +16,12 @@ const focusLowBtn = document.getElementById('focus-low-btn');
 const focusFailedBtn = document.getElementById('focus-failed-btn');
 const retryFailedBtn = document.getElementById('retry-failed-btn');
 const stopAnalysisBtn = document.getElementById('stop-analysis-btn');
+const watchingIndicator = document.getElementById('watching-indicator');
+
+function setWatching(on) {
+  if (!watchingIndicator) return;
+  watchingIndicator.classList.toggle('hidden', !on);
+}
 
 function setStatus(text, type) {
   statusEl.textContent = text;
@@ -77,12 +83,13 @@ function updateResultsSummary(state) {
   const failed = state.failedCount || 0;
   const total = high + low + failed;
   const pending = state.pendingCount || 0;
+  const running = pending > 0 || !!state.analysisStarted;
 
   // Stop 버튼은 결과 유무와 무관 — 분석 진행 중이면 즉시 노출
   if (stopAnalysisBtn) {
-    const running = pending > 0 || !!state.analysisStarted;
     stopAnalysisBtn.classList.toggle('hidden', !running);
   }
+  setWatching(running);
 
   if (total === 0) {
     resultsSummary.classList.add('hidden');
@@ -105,8 +112,8 @@ function updateResultsSummary(state) {
   }
 
   summaryNote.textContent = pending > 0
-    ? `총 ${total}개 결과, ${pending}개 분석 중 · 숫자를 누르면 해당 콘텐츠로 이동합니다.`
-    : `총 ${total}개 결과 · 새로 보이는 콘텐츠도 계속 확인합니다.`;
+    ? `분석 ${total}개 완료, ${pending}개 진행 중 · 숫자를 누르면 해당 콘텐츠로 이동합니다.`
+    : `분석 ${total}개 완료 · 숫자를 누르면 해당 콘텐츠로 이동합니다.`;
 }
 
 async function syncState() {
@@ -190,6 +197,7 @@ if (stopAnalysisBtn) {
     const res = await safeSend({ type: 'STOP_ANALYSIS' });
     if (res && res.ok) {
       stopPolling();
+      setWatching(false);
       setStatus('자동 분석을 중단했습니다.', 'success');
       stopAnalysisBtn.classList.add('hidden');
     }
@@ -197,17 +205,20 @@ if (stopAnalysisBtn) {
 }
 
 let pollTimer = null;
+let lastPollState = null;
 
 function startPolling() {
   stopPolling();
   let lastSignature = '';
   let stableCount = 0;
+  setWatching(true);
   pollTimer = setInterval(async () => {
     const tab = await getActiveTab();
     if (!tab) return stopPolling();
     try {
       const state = await chrome.tabs.sendMessage(tab.id, { type: 'GET_STATE' });
       if (!state) return;
+      lastPollState = state;
       updateResultsSummary(state);
 
       const signature = [
@@ -219,7 +230,7 @@ function startPolling() {
 
       if (signature === lastSignature) {
         stableCount += 1;
-        if (stableCount >= 5) stopPolling();
+        if (stableCount >= 5) stopPolling({ reason: 'stable' });
       } else {
         stableCount = 0;
         lastSignature = signature;
@@ -230,10 +241,19 @@ function startPolling() {
   }, 700);
 }
 
-function stopPolling() {
+function stopPolling(opts) {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
+  }
+  // 폴링이 안정화로 자연 종료된 경우 사용자에게 명시적으로 알림.
+  // analysisStarted가 여전히 true여도 새 결과가 5회 폴링 동안 없으면 사실상 idle.
+  if (opts && opts.reason === 'stable') {
+    const pending = (lastPollState && lastPollState.pendingCount) || 0;
+    if (pending === 0) {
+      setStatus('분석 완료', 'success');
+      setWatching(false);
+    }
   }
 }
 

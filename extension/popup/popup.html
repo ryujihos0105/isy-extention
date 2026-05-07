@@ -38,14 +38,24 @@
     </section>
 
     <div id="summary-note" class="summary-note hidden"></div>
+    <div id="watching-indicator" class="watching-indicator hidden" aria-hidden="true">
+      <span class="watching-dot"></span>
+      <span class="watching-text">새로 등장하는 콘텐츠도 계속 확인합니다</span>
+    </div>
 
     <main class="actions">
-      <button id="analyze-all-btn" class="primary" aria-label="현재 페이지의 콘텐츠 분석">
-        현재 페이지 분석
-      </button>
-      <button id="scan-btn" class="secondary" aria-label="분석 가능한 콘텐츠 개수 확인">
-        분석 가능 항목 확인
-      </button>
+      <div class="action-group">
+        <button id="analyze-all-btn" class="primary" aria-label="현재 페이지의 콘텐츠 분석">
+          현재 페이지 분석
+        </button>
+        <span class="btn-hint">페이지의 모든 콘텐츠를 즉시 분석</span>
+      </div>
+      <div class="action-group">
+        <button id="scan-btn" class="secondary" aria-label="분석 가능한 콘텐츠 개수 확인">
+          분석 가능 항목 확인
+        </button>
+        <span class="btn-hint">분석은 시작하지 않고 개수만 미리 확인</span>
+      </div>
       <button id="retry-failed-btn" class="secondary hidden" aria-label="분석 실패 항목 재시도" disabled>
         실패 재시도
       </button>

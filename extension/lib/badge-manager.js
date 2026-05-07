@@ -131,6 +131,23 @@
     document.querySelectorAll('.isy-detail-overlay').forEach(el => el.remove());
   }
 
+  // 단일 타깃의 배지만 제거. loading→결과 교체 시 사용.
+  function detachBadge(target) {
+    const record = activeBadges.get(target);
+    if (!record) return false;
+    const { badge, container } = record;
+    visibilityObserver?.unobserve(target);
+    if (badge.isConnected) badge.remove();
+    activeBadges.delete(target);
+    const stack = containerBadges.get(container);
+    if (stack) {
+      const idx = stack.findIndex(entry => entry.target === target);
+      if (idx >= 0) stack.splice(idx, 1);
+    }
+    if (target.dataset) delete target.dataset.isyBadged;
+    return true;
+  }
+
   function getBadgeCount() {
     return activeBadges.size;
   }
@@ -140,6 +157,7 @@
 
   window.ISY.badges = {
     attach: attachBadge,
+    detach: detachBadge,
     removeAll: removeAllBadges,
     getCount: getBadgeCount,
     refreshVisibility: updateAllInstagramVisibility

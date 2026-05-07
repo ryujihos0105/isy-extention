@@ -17,10 +17,13 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "versionv9"))
 
+import time
+import threading
 import torch
 import torch.nn.functional as F
 import requests
 import traceback
+from collections import OrderedDict
 from io import BytesIO
 from PIL import Image
 from contextlib import asynccontextmanager
@@ -141,6 +144,36 @@ _BLOCKED_HOSTS = (
 
 MAX_IMAGE_BYTES = 30 * 1024 * 1024  # 30MB
 MAX_REDIRECTS = 3
+
+# 결과 메모리 캐시.
+# 동일 이미지에 대한 재요청을 추론 큐에 다시 태우지 않는다.
+# 클라이언트(background.js) 캐시가 SW 종료/탭 분리에서 날아가도 서버 측에서 흡수.
+_RESULT_CACHE_MAX = 200
+_RESULT_CACHE_TTL_SEC = 30 * 60
+_result_cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
+_result_cache_lock = threading.Lock()
+
+
+def _cache_get(key: str) -> Optional[dict]:
+    now = time.monotonic()
+    with _result_cache_lock:
+        entry = _result_cache.get(key)
+        if entry is None:
+            return None
+        ts, result = entry
+        if now - ts > _RESULT_CACHE_TTL_SEC:
+            _result_cache.pop(key, None)
+            return None
+        _result_cache.move_to_end(key)
+        return result
+
+
+def _cache_put(key: str, result: dict) -> None:
+    with _result_cache_lock:
+        _result_cache[key] = (time.monotonic(), result)
+        _result_cache.move_to_end(key)
+        while len(_result_cache) > _RESULT_CACHE_MAX:
+            _result_cache.popitem(last=False)
 
 
 def _assert_safe_url(url: str) -> None:
@@ -302,10 +335,22 @@ def run_inference(img_pil: Image.Image) -> dict:
     }
 
 
+# sync def 핸들러: FastAPI가 threadpool에서 실행 → blocking I/O(fetch_image)와 GIL 밖 추론을
+# 진짜 병렬로 처리. async def로 두면 메인 이벤트 루프가 fetch/추론 동안 점유돼 다른 요청이 막힌다.
 @app.post("/api/analyze/image")
-async def analyze_image(req: AnalyzeRequest):
+def analyze_image(req: AnalyzeRequest):
     if not req.url:
         raise HTTPException(status_code=400, detail="url 필드가 필요합니다")
+
+    # 캐시 키: 정규화된 실제 다운로드 URL. dthumb/sqp 변형이 동일 원본으로 수렴.
+    try:
+        cache_key, _ = resolve_image_url(req.url, req.page_url)
+    except Exception:
+        cache_key = req.url
+
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return {"url": req.url, "media_type": "image", "from_cache": True, **cached}
 
     try:
         img_pil = fetch_image(req.url, req.page_url)
@@ -322,6 +367,7 @@ async def analyze_image(req: AnalyzeRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"추론 실패: {e}")
 
+    _cache_put(cache_key, result)
     return {"url": req.url, "media_type": "image", **result}
 
 

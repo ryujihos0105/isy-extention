@@ -14,8 +14,11 @@
   console.log(`[ISY] Ready on ${window.location.hostname} (${adapter.name})`);
 
   const TEXT_ANALYSIS_ENABLED = false;
+  const ANALYZE_CONCURRENCY = 4;
   const progress = { pending: 0, done: 0, failed: 0 };
   const focusCursors = { high: 0, low: 0, failed: 0 };
+  const analyzeQueue = [];
+  let activeAnalyzeCount = 0;
   let analysisStarted = false;
   let followupObserverStarted = false;
 
@@ -33,14 +36,23 @@
 
   function recordFailure(key, mediaType, error, element) {
     progress.failed += 1;
+    const reason = error || '분석 실패';
     ISY.state.results.set(key, {
       isFake: false,
       fakeProb: 0,
       level: 'failed',
       mediaType,
-      error: error || '분석 실패',
+      error: reason,
       element
     });
+    // 페이지에 실패 배지 표시 (미디어만 — 텍스트는 high만 띄우는 기존 정책 유지)
+    if (element && element.isConnected && mediaType !== 'text') {
+      ISY.ui.showResultBadge(element, {
+        level: 'failed',
+        media_type: mediaType,
+        error: reason
+      }, key);
+    }
   }
 
   async function analyzeItem(item, options) {
@@ -51,6 +63,12 @@
     ISY.state.analyzedUrls.add(key);
 
     progress.pending += 1;
+
+    // 미디어 항목은 결과 도착 전까지 "분석 중" 배지로 상태를 보여줌.
+    // 텍스트는 high 결과에만 배지가 붙는 기존 정책을 유지.
+    if (item.mediaType !== 'text' && item.element && item.element.isConnected) {
+      ISY.ui.showLoadingBadge(item.element, key);
+    }
 
     try {
       const response = await chrome.runtime.sendMessage({
@@ -85,8 +103,51 @@
     }
   }
 
+  // 동시 요청을 ANALYZE_CONCURRENCY개로 제한.
+  // 서버 모델 추론이 sequential이라 폭주시키면 후순위 요청들이 클라이언트 25s timeout에 걸린다.
   function analyzeItems(items, options) {
-    items.forEach(item => analyzeItem(item, options));
+    items.forEach(item => analyzeQueue.push({ item, options }));
+    pumpAnalyzeQueue();
+  }
+
+  // 실패 항목 재분석. specificKeys가 주어지면 그 중 실패 상태인 것만, 아니면 전체 실패.
+  // 팝업의 "실패 재시도" 버튼과 페이지 오버레이의 "재시도" 버튼이 공통 사용.
+  function retryFailedItems(specificKeys) {
+    const allFailed = Array.from(ISY.state.results.entries())
+      .filter(([, r]) => r.level === 'failed')
+      .map(([key]) => key);
+    const targets = Array.isArray(specificKeys) && specificKeys.length
+      ? allFailed.filter(k => specificKeys.includes(k))
+      : allFailed;
+
+    targets.forEach(key => {
+      const stored = ISY.state.results.get(key);
+      if (stored && stored.element && stored.element.dataset
+          && stored.element.dataset.isyBadged === 'true') {
+        ISY.badges.detach(stored.element);
+      }
+      ISY.state.analyzedUrls.delete(key);
+      ISY.state.results.delete(key);
+    });
+    progress.failed = Math.max(0, progress.failed - targets.length);
+
+    const itemsToRetry = getCurrentItems().allItems
+      .filter(item => targets.includes(getItemKey(item)));
+    analyzeItems(itemsToRetry, { force: true });
+
+    return { ok: true, retried: itemsToRetry.length, requested: targets.length };
+  }
+  ISY.retryFailedItems = retryFailedItems;
+
+  function pumpAnalyzeQueue() {
+    while (activeAnalyzeCount < ANALYZE_CONCURRENCY && analyzeQueue.length > 0) {
+      const { item, options } = analyzeQueue.shift();
+      activeAnalyzeCount += 1;
+      analyzeItem(item, options).finally(() => {
+        activeAnalyzeCount -= 1;
+        pumpAnalyzeQueue();
+      });
+    }
   }
 
   function getResultsByLevel(level) {
@@ -215,27 +276,15 @@
         return false;
 
       case 'RETRY_FAILED': {
-        const failedKeys = Array.from(ISY.state.results.entries())
-          .filter(([, r]) => r.level === 'failed')
-          .map(([key]) => key);
-
-        failedKeys.forEach(key => {
-          ISY.state.analyzedUrls.delete(key);
-          ISY.state.results.delete(key);
-        });
-        progress.failed = Math.max(0, progress.failed - failedKeys.length);
-
-        const itemsToRetry = getCurrentItems().allItems
-          .filter(item => failedKeys.includes(getItemKey(item)));
-        analyzeItems(itemsToRetry, { force: true });
-
-        sendResponse({ ok: true, retried: itemsToRetry.length, requested: failedKeys.length });
+        const result = retryFailedItems(message.failedKeys);
+        sendResponse(result);
         return false;
       }
 
       case 'STOP_ANALYSIS': {
         analysisStarted = false;
         followupObserverStarted = false;
+        analyzeQueue.length = 0;  // 대기 중이던 항목들 폐기
         if (ISY.observer && ISY.observer.stopAll) {
           ISY.observer.stopAll();
         }
