@@ -3,7 +3,7 @@
 // ============================================
 
 const API_BASE = "http://localhost:8000";  // 실제 백엔드로 교체 필요
-const FETCH_TIMEOUT_MS = 25000;
+const FETCH_TIMEOUT_MS = 18000;
 const RETRY_COUNT = 1;
 const RETRY_BACKOFF_MS = 1000;
 
@@ -88,7 +88,13 @@ function normalizeUrlForCache(url) {
       const src = u.searchParams.get('src');
       if (src) {
         try {
-          return decodeURIComponent(src).replace(/^"|"$/g, '');
+          let decoded = src;
+          for (let i = 0; i < 3; i++) {
+            const next = decodeURIComponent(decoded);
+            if (next === decoded) break;
+            decoded = next;
+          }
+          return decoded.replace(/^"|"$/g, '');
         } catch {}
       }
     }

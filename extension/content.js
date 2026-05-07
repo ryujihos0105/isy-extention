@@ -90,7 +90,7 @@
           ISY.ui.showResultBadge(item.element, response.result, key);
         }
       } else {
-        const error = response && response.error ? response.error : '분석 실패';
+        const error = !response ? 'Service Worker 응답 없음' : (response.error || '분석 실패');
         console.warn('[ISY] Analysis failed:', error);
         recordFailure(key, item.mediaType, error, item.element);
       }

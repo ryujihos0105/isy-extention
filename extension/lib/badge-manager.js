@@ -26,7 +26,7 @@
 
   function getContainerStack(container) {
     const stack = containerBadges.get(container) || [];
-    const liveStack = stack.filter(entry => entry.badge && entry.badge.isConnected);
+    const liveStack = stack.filter(entry => entry.target?.isConnected && entry.badge?.isConnected);
     containerBadges.set(container, liveStack);
     return liveStack;
   }
@@ -129,6 +129,8 @@
     }
     activeBadges.clear();
     document.querySelectorAll('.isy-detail-overlay').forEach(el => el.remove());
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', onResize);
   }
 
   // 단일 타깃의 배지만 제거. loading→결과 교체 시 사용.
@@ -152,8 +154,10 @@
     return activeBadges.size;
   }
 
-  window.addEventListener('scroll', () => requestAnimationFrame(updateAllInstagramVisibility), true);
-  window.addEventListener('resize', () => requestAnimationFrame(updateAllInstagramVisibility));
+  const onScroll = () => requestAnimationFrame(updateAllInstagramVisibility);
+  const onResize = () => requestAnimationFrame(updateAllInstagramVisibility);
+  window.addEventListener('scroll', onScroll, true);
+  window.addEventListener('resize', onResize);
 
   window.ISY.badges = {
     attach: attachBadge,

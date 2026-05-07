@@ -234,7 +234,13 @@ def resolve_image_url(url: str, page_url: Optional[str] = None) -> tuple:
     if "pstatic.net" in parsed.netloc and "dthumb" in parsed.path:
         params = parse_qs(parsed.query)
         if "src" in params:
-            actual = unquote(params["src"][0]).strip('"')
+            actual = params["src"][0].strip('"')
+            for _ in range(3):
+                decoded = unquote(actual)
+                if decoded == actual:
+                    break
+                actual = decoded
+            actual = actual.strip('"')
             return actual, "https://www.naver.com/"
         return url, "https://www.naver.com/"
 
@@ -261,7 +267,7 @@ def fetch_image(url: str, page_url: Optional[str] = None) -> Image.Image:
         resp = requests.get(
             current_url,
             headers=headers,
-            timeout=10,
+            timeout=12,
             stream=True,
             allow_redirects=False,
         )

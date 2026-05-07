@@ -9,6 +9,25 @@
   const activeOverlays = new WeakMap();
   const THRESHOLD = 0.5;
 
+  const MEDIA_TYPE_LABELS = { image: '이미지', video: '영상', text: '텍스트' };
+
+  function toUserMessage(raw) {
+    if (!raw) return '알 수 없는 오류';
+    const s = String(raw).toLowerCase();
+    if (s.includes('timeout') || s.includes('timed out')) return '서버 응답 시간이 초과됐습니다';
+    if (s.includes('download') || s.includes('502')) return '이미지를 가져오지 못했습니다';
+    if (s.includes('aborted')) return '분석이 중단됐습니다';
+    if (s.includes('service worker') || s.includes('응답 없음')) return '확장 프로그램을 새로고침 해주세요';
+    return String(raw);
+  }
+
+  function addClickAndKeydown(element, handler) {
+    element.addEventListener('click', handler);
+    element.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') handler(e);
+    });
+  }
+
   function getFakeProbability(result) {
     return result.fake_probability != null ? result.fake_probability : 0;
   }
@@ -57,8 +76,8 @@
 
   function showLoadingBadge(targetElement, itemKey) {
     if (!targetElement || !targetElement.isConnected) return;
-    if (targetElement.dataset && targetElement.dataset.isyBadged) return;
-    if (targetElement.dataset) targetElement.dataset.isyBadged = 'loading';
+    if (targetElement.dataset.isyBadged) return;
+    targetElement.dataset.isyBadged = 'loading';
 
     const badge = document.createElement('div');
     badge.className = 'isy-badge isy-loading-badge';
@@ -70,23 +89,29 @@
     if (itemKey) badge.dataset.isyItemKey = itemKey;
 
     const ok = window.ISY.badges.attach(targetElement, badge);
-    if (!ok && targetElement.dataset) {
-      delete targetElement.dataset.isyBadged;
-    }
+    if (!ok) delete targetElement.dataset.isyBadged;
   }
 
   function showResultBadge(targetElement, result, itemKey) {
     if (!targetElement || !targetElement.isConnected) return;
     const ds = targetElement.dataset;
-    if (ds && ds.isyBadged === 'true') return;
+    if (ds.isyBadged === 'true') return;
     // loading 배지가 붙어있으면 결과 배지로 교체
-    if (ds && ds.isyBadged === 'loading') {
+    if (ds.isyBadged === 'loading') {
       window.ISY.badges.detach(targetElement);
     }
-    if (ds) ds.isyBadged = 'true';
+    ds.isyBadged = 'true';
 
     const meta = getResultMeta(result);
-    recordResult(itemKey, result, result.media_type || 'media', targetElement);
+    if (itemKey) {
+      window.ISY.state.results.set(itemKey, {
+        isFake: meta.isHigh,
+        fakeProb: meta.fakeProb,
+        level: meta.level,
+        mediaType: result.media_type || 'media',
+        element: targetElement
+      });
+    }
 
     const badge = document.createElement('div');
     let levelClass;
@@ -106,26 +131,21 @@
       e.stopPropagation();
       showDetailOverlay(targetElement, result, itemKey);
     }
-    badge.addEventListener('click', open);
-    badge.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') open(e);
-    });
+    addClickAndKeydown(badge, open);
 
     const ok = window.ISY.badges.attach(targetElement, badge);
-    if (!ok && targetElement.dataset) {
-      delete targetElement.dataset.isyBadged;
-    }
+    if (!ok) delete targetElement.dataset.isyBadged;
   }
 
   function showTextBadge(element, result, itemKey) {
     if (!element || !element.isConnected) return;
-    if (element.dataset && element.dataset.isyTextBadged === 'true') return;
+    if (element.dataset.isyTextBadged === 'true') return;
 
     const meta = getResultMeta(result);
     recordResult(itemKey, result, 'text', element);
     if (!meta.isHigh) return;
 
-    if (element.dataset) element.dataset.isyTextBadged = 'true';
+    element.dataset.isyTextBadged = 'true';
     element.classList.add('isy-text-highlighted');
 
     const cs = window.getComputedStyle(element);
@@ -148,10 +168,7 @@
       e.stopPropagation();
       showDetailOverlay(element, result, itemKey);
     }
-    badge.addEventListener('click', openText);
-    badge.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') openText(e);
-    });
+    addClickAndKeydown(badge, openText);
 
     element.appendChild(badge);
   }
@@ -173,8 +190,7 @@
     const adapterName = window.ISY.state.currentAdapter.name;
 
     if (meta.isFailed) {
-      const reason = (result && result.error) ? String(result.error) : '알 수 없는 오류';
-      const safeReason = reason
+      const safeReason = toUserMessage(result?.error)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       overlay.innerHTML = `
         <div class="isy-detail-card failed" role="dialog" aria-label="분석 실패">
@@ -189,10 +205,7 @@
       `;
     } else {
       const pctText = meta.fakeProb * 100;
-      const mediaType = result.media_type || 'content';
-      const itemMeta = result.item_meta || {};
-      const analysisBasis = itemMeta.isThumbnail ? '썸네일 이미지 기준' : '원본/표시 이미지 기준';
-      const cacheText = result.fromCache ? '<div class="isy-note">캐시된 결과입니다.</div>' : '';
+      const mediaType = MEDIA_TYPE_LABELS[result.media_type] || '콘텐츠';
 
       overlay.innerHTML = `
         <div class="isy-detail-card ${meta.isHigh ? 'high' : 'low'}" role="dialog" aria-label="AI 생성 가능성 분석 결과">
@@ -209,7 +222,7 @@
               <span>AI 생성 가능성</span>
               <strong class="isy-gauge-value">${pctText.toFixed(1)}%</strong>
             </div>
-            <div class="isy-gauge-track" role="progressbar" aria-valuenow="${pctText.toFixed(1)}" aria-valuemin="0" aria-valuemax="100">
+            <div class="isy-gauge-track" role="progressbar" aria-valuenow="${pctText.toFixed(1)}" aria-valuemin="0" aria-valuemax="100" aria-valuetext="AI 생성 가능성 ${pctText.toFixed(1)}%">
               <div class="isy-gauge-fill ${meta.isHigh ? 'high' : 'low'}" style="width: ${pctText.toFixed(2)}%"></div>
               <div class="isy-gauge-threshold" aria-hidden="true"></div>
             </div>
@@ -221,17 +234,12 @@
             <span>콘텐츠 유형</span>
             <strong>${mediaType}</strong>
           </div>
-          <div class="isy-metric">
-            <span>분석 기준</span>
-            <strong>${analysisBasis}</strong>
-          </div>
           ${result.crop_status ? `
             <div class="isy-metric">
               <span>얼굴 크롭</span>
               <strong>${result.crop_status}</strong>
             </div>
           ` : ''}
-          ${cacheText}
           <div class="isy-source">모델: ${result.model || adapterName}</div>
         </div>
       `;

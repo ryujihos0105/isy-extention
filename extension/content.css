@@ -29,7 +29,6 @@
   outline-offset: 2px;
 }
 
-.isy-badge.isy-real,
 .isy-badge.isy-low {
   background: #0F766E;
   color: white;
@@ -42,7 +41,6 @@
   100% { transform: scale(1); }
 }
 
-.isy-badge.isy-fake,
 .isy-badge.isy-high {
   background: #EA580C;
   color: white;
@@ -51,7 +49,6 @@
   transition: box-shadow 0.2s, transform 0.15s;
 }
 
-.isy-badge.isy-fake:hover,
 .isy-badge.isy-high:hover {
   box-shadow: 0 2px 18px rgba(234, 88, 12, 0.85);
   transform: scale(1.06);
