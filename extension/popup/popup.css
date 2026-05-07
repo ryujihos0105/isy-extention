@@ -52,7 +52,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  perspective: 420px;
 }
 
 .brand-logo {
@@ -61,20 +60,6 @@ body {
   object-fit: contain;
   border-radius: 14px;
   display: block;
-  transform-style: preserve-3d;
-  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.28));
-  animation: isy-logo-spin 7s linear infinite;
-  will-change: transform;
-}
-
-@keyframes isy-logo-spin {
-  0% { transform: rotateY(0deg) rotateX(8deg); }
-  50% { transform: rotateY(180deg) rotateX(8deg); }
-  100% { transform: rotateY(360deg) rotateX(8deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .brand-logo { animation: none; }
 }
 
 .brand-mark {
