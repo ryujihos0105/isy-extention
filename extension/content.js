@@ -14,6 +14,7 @@
   console.log(`[ISY] Ready on ${window.location.hostname} (${adapter.name})`);
 
   const TEXT_ANALYSIS_ENABLED = false;
+  const LOCAL_API_BASE = 'http://localhost:8000';
   const ANALYZE_CONCURRENCY = 4;
   const progress = { pending: 0, done: 0, failed: 0 };
   const focusCursors = { high: 0, low: 0, failed: 0 };
@@ -23,15 +24,79 @@
   let followupObserverStarted = false;
 
   function getItemKey(item) {
-    return item.mediaType === 'text'
-      ? 'text:' + item.text.slice(0, 120).replace(/\s+/g, ' ')
-      : item.url;
+    if (item.mediaType === 'text') {
+      return 'text:' + item.text.slice(0, 120).replace(/\s+/g, ' ');
+    }
+    if (item.mediaType === 'video' && item.platformMeta?.videoId) {
+      return `video:${item.platformMeta.platform || 'unknown'}:${item.platformMeta.videoId}`;
+    }
+    return item.url;
   }
 
   function getCurrentItems() {
     const mediaItems = ISY.extractMedia();
     const textItems = TEXT_ANALYSIS_ENABLED ? ISY.extractText() : [];
     return { mediaItems, textItems, allItems: [...mediaItems, ...textItems] };
+  }
+
+  function isVideoFile(file) {
+    return !!file && (
+      file.type?.startsWith('video/')
+      || /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(file.name || '')
+    );
+  }
+
+  function getUploadBadgeTarget(input) {
+    return input.closest?.('ytcp-uploads-dialog, tp-yt-paper-dialog, ytcp-dialog')
+      || document.querySelector('ytcp-uploads-dialog, tp-yt-paper-dialog, ytcp-dialog')
+      || document.body;
+  }
+
+  async function analyzeUploadFile(file, target) {
+    const key = `upload:${file.name}:${file.size}:${file.lastModified}`;
+    if (ISY.state.analyzedUrls.has(key)) return;
+    ISY.state.analyzedUrls.add(key);
+    progress.pending += 1;
+
+    if (target && target.isConnected) {
+      ISY.ui.showLoadingBadge(target, key);
+    }
+
+    try {
+      const form = new FormData();
+      form.append('file', file, file.name || 'upload.mp4');
+      const response = await fetch(`${LOCAL_API_BASE}/api/analyze/video-file`, {
+        method: 'POST',
+        body: form
+      });
+      if (!response.ok) {
+        let detail = response.statusText;
+        try {
+          const body = await response.json();
+          detail = body.detail || detail;
+        } catch {}
+        throw new Error(`API ${response.status}: ${detail}`);
+      }
+      const result = await response.json();
+      ISY.ui.showResultBadge(target, result, key);
+    } catch (err) {
+      console.error('[ISY] Upload video analysis failed:', err);
+      recordFailure(key, 'video', err.message, target);
+    } finally {
+      progress.done += 1;
+      if (ISY.badges.refreshVisibility) ISY.badges.refreshVisibility();
+    }
+  }
+
+  function startYouTubeStudioUploadWatcher() {
+    if (location.hostname !== 'studio.youtube.com') return;
+    document.addEventListener('change', event => {
+      const input = event.target;
+      if (!input || input.tagName !== 'INPUT' || input.type !== 'file') return;
+      const file = Array.from(input.files || []).find(isVideoFile);
+      if (!file) return;
+      analyzeUploadFile(file, getUploadBadgeTarget(input));
+    }, true);
   }
 
   function recordFailure(key, mediaType, error, element) {
@@ -287,6 +352,28 @@
     return { left, top, right, bottom, width, height };
   }
 
+  function analyzeCurrentVideo() {
+    const candidates = getCurrentItems().mediaItems
+      .filter(item => item.mediaType === 'video' && item.element && item.element.isConnected)
+      .map(item => ({ item, rect: getVisibleRect(item.element) }))
+      .filter(candidate => candidate.rect);
+
+    if (candidates.length === 0) {
+      return { ok: false, error: '분석할 현재 영상을 찾지 못했습니다.' };
+    }
+
+    candidates.sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
+    const item = candidates[0].item;
+    const key = getItemKey(item);
+    if (item.element?.dataset?.isyBadged) {
+      ISY.badges.detach(item.element);
+    }
+    ISY.state.analyzedUrls.delete(key);
+    ISY.state.results.delete(key);
+    analyzeItems([item], { force: true });
+    return { ok: true, count: 1 };
+  }
+
   function getCandidateForPoint(candidates, clientX, clientY) {
     let best = null;
     let bestArea = Infinity;
@@ -531,6 +618,10 @@
         sendResponse(startPickAnalysis());
         return false;
 
+      case 'ANALYZE_CURRENT_VIDEO':
+        sendResponse(analyzeCurrentVideo());
+        return false;
+
       case 'FOCUS_RESULT':
         sendResponse(focusResult(message.level));
         return false;
@@ -605,4 +696,5 @@
 
   window.addEventListener('scroll', scheduleRestoreResultBadges, true);
   window.addEventListener('resize', scheduleRestoreResultBadges, true);
+  startYouTubeStudioUploadWatcher();
 })();

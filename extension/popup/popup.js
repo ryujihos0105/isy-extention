@@ -4,6 +4,7 @@
 
 const analyzeAllBtn = document.getElementById('analyze-all-btn');
 const analyzeSelectedBtn = document.getElementById('analyze-selected-btn');
+let analyzeCurrentVideoBtn = document.getElementById('analyze-current-video-btn');
 const statusEl = document.getElementById('status');
 const adapterNameEl = document.getElementById('adapter-name');
 const resultsSummary = document.getElementById('results-summary');
@@ -18,6 +19,19 @@ const retryFailedBtn = document.getElementById('retry-failed-btn');
 const clearResultsBtn = document.getElementById('clear-results-btn');
 const stopAnalysisBtn = document.getElementById('stop-analysis-btn');
 const watchingIndicator = document.getElementById('watching-indicator');
+
+if (!analyzeCurrentVideoBtn && analyzeSelectedBtn?.parentElement) {
+  const group = document.createElement('div');
+  group.className = 'action-group';
+  group.innerHTML = `
+    <button id="analyze-current-video-btn" class="secondary" aria-label="현재 영상만 분석">
+      현재 영상 분석
+    </button>
+    <span class="btn-hint">YouTube 재생 화면의 현재 영상만 분석</span>
+  `;
+  analyzeSelectedBtn.parentElement.insertAdjacentElement('afterend', group);
+  analyzeCurrentVideoBtn = group.querySelector('#analyze-current-video-btn');
+}
 
 function setWatching(on) {
   if (!watchingIndicator) return;
@@ -286,6 +300,20 @@ analyzeSelectedBtn.addEventListener('click', async () => {
   }
   setStatus('파란 박스를 계속 클릭해 원하는 항목만 분석하세요. Esc로 종료합니다.', 'success');
 });
+
+if (analyzeCurrentVideoBtn) {
+  analyzeCurrentVideoBtn.addEventListener('click', async () => {
+    setStatus('현재 영상을 분석하는 중', 'loading');
+    const res = await safeSend({ type: 'ANALYZE_CURRENT_VIDEO' });
+    if (!res) return;
+    if (!res.ok) {
+      setStatus(res.error || '분석할 현재 영상을 찾지 못했습니다.', 'error');
+      return;
+    }
+    setStatus('현재 영상 분석을 시작했습니다.', 'loading');
+    startPolling();
+  });
+}
 
 window.addEventListener('unload', stopPolling);
 

@@ -19,6 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "versionv9"))
 
 import time
 import threading
+import shutil
+import tempfile
 import torch
 import torch.nn.functional as F
 import requests
@@ -32,24 +34,33 @@ from urllib.parse import urlparse, urlunparse, parse_qs, unquote, urljoin
 import ipaddress
 import socket
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from model import load_model, LateFusionModel
 from preprocess import preprocess_image
 from config import MODEL_PATH
+from video_inference import (
+    check_video_assets,
+    download_direct_video,
+    download_youtube_video,
+    load_video_model,
+    remove_temp_video,
+)
 
 # ── 모델 전역 상태 ──────────────────────────────────────────
 _image_model: Optional[LateFusionModel] = None
-_text_model = None    # 텍스트 모델 추가 시 타입 지정
+_video_model = None
+_device: Optional[str] = None
+_text_model = None
 _video_model = None   # 영상 모델 추가 시 타입 지정
 _device: Optional[str] = None
 
 BASE_DIR      = os.path.dirname(__file__)
 IMAGE_WEIGHTS = os.path.join(BASE_DIR, "versionv9", MODEL_PATH)
 TEXT_WEIGHTS  = os.path.join(BASE_DIR, "text_model", "weights", "best.pt")
-VIDEO_WEIGHTS = os.path.join(BASE_DIR, "video_model", "weights", "best.pt")
+VIDEO_DIR     = os.path.join(BASE_DIR, "video")
 
 
 def _load_text_model(device: str):
@@ -62,10 +73,7 @@ def _load_text_model(device: str):
 
 def _load_video_model(device: str):
     """영상 모델 로더 — video_model/ 폴더 추가 후 구현"""
-    # sys.path.insert(0, os.path.join(BASE_DIR, "video_model"))
-    # from model import load_model as load_video
-    # return load_video(VIDEO_WEIGHTS, device)
-    pass
+    return load_video_model(device)
 
 
 @asynccontextmanager
@@ -88,7 +96,8 @@ async def lifespan(app: FastAPI):
         print("[ISY] 텍스트 모델 없음 — /api/analyze/text 비활성화")
 
     # 영상 모델 (선택 — 폴더 있을 때만)
-    if os.path.exists(VIDEO_WEIGHTS):
+    missing_video_assets = check_video_assets()
+    if not missing_video_assets:
         print("[ISY] 영상 모델 로드 중...")
         _video_model = _load_video_model(_device)
         print("[ISY] 영상 모델 준비됨")
@@ -103,7 +112,8 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["chrome-extension://*"],
+    allow_origins=["https://studio.youtube.com"],
+    allow_origin_regex=r"chrome-extension://.*",
     allow_methods=["POST"],
     allow_headers=["Content-Type"],
 )
@@ -408,16 +418,32 @@ def run_video_inference(url: Optional[str], platform_meta: Optional[PlatformMeta
         "model": str
       }
     """
-    # TODO: 영상 모델 담당자가 구현
-    # 예시 흐름:
-    #   frames = download_and_sample_frames(url, platform_meta)
-    #   result = _video_model(frames)
-    #   return { "fake_probability": ..., "label": ... }
-    raise NotImplementedError("영상 추론 미구현 — video_model/ 폴더 및 run_video_inference() 구현 필요")
+    assert _video_model is not None, "video model is not loaded"
 
+    temp_video_path = None
+    try:
+        if platform_meta and platform_meta.platform == "youtube" and platform_meta.video_id:
+            temp_video_path = download_youtube_video(platform_meta.video_id)
+        elif url:
+            _assert_safe_url(url)
+            parsed = urlparse(url)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "video/webm,video/mp4,video/*,*/*;q=0.8",
+                "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Referer": f"{parsed.scheme}://{parsed.netloc}/",
+            }
+            temp_video_path = download_direct_video(url, headers=headers)
+        else:
+            raise ValueError("url or platform_meta.video_id is required")
+
+        return _video_model.predict_path(temp_video_path)
+    finally:
+        if temp_video_path is not None:
+            remove_temp_video(temp_video_path)
 
 @app.post("/api/analyze/video")
-async def analyze_video(req: VideoRequest):
+def analyze_video(req: VideoRequest):
     if _video_model is None:
         raise HTTPException(status_code=503, detail="영상 모델 없음 — video_model/ 폴더를 추가하세요")
     if not req.url and (not req.platform_meta or not req.platform_meta.video_id):
@@ -431,6 +457,31 @@ async def analyze_video(req: VideoRequest):
         raise HTTPException(status_code=500, detail=f"영상 추론 실패: {e}")
 
     return {"url": req.url, "media_type": "video", **result}
+
+
+@app.post("/api/analyze/video-file")
+def analyze_video_file(file: UploadFile = File(...)):
+    if _video_model is None:
+        raise HTTPException(status_code=503, detail="video model is not loaded")
+
+    suffix = os.path.splitext(file.filename or "")[1] or ".mp4"
+    temp_dir = tempfile.mkdtemp(prefix="isy-upload-video-")
+    temp_path = os.path.join(temp_dir, "upload" + suffix)
+    try:
+        with open(temp_path, "wb") as out:
+            shutil.copyfileobj(file.file, out)
+        result = _video_model.predict_path(temp_path)
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"video file inference failed: {e}")
+    finally:
+        try:
+            file.file.close()
+        except Exception:
+            pass
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    return {"url": None, "media_type": "video", **result}
 
 
 if __name__ == "__main__":

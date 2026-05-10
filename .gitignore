@@ -19,6 +19,8 @@ env/
 *.onnx
 *.pkl
 *.joblib
+video/checkpoints_*/
+video/__MACOSX/
 
 # Logs / temporary files
 *.log
