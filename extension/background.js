@@ -283,9 +283,16 @@ async function analyzeContent(url, mediaType, text, platformMeta, pageUrl, itemM
 //   - url이 있으면 서버가 직접 다운로드
 //   - url이 null이면 platformMeta.videoId로 서버가 플랫폼 API를 통해 처리
 async function analyzeVideo(url, platformMeta) {
+  const normalizedPlatformMeta = platformMeta
+    ? {
+      platform: platformMeta.platform || null,
+      video_id: platformMeta.video_id || platformMeta.videoId || null,
+      videoId: platformMeta.videoId || platformMeta.video_id || null
+    }
+    : null;
   const cacheKey = url
     ? normalizeUrlForCache(url)
-    : `video:${platformMeta?.platform ?? 'unknown'}:${platformMeta?.videoId ?? 'unknown'}`;
+    : `video:${normalizedPlatformMeta?.platform ?? 'unknown'}:${normalizedPlatformMeta?.video_id ?? 'unknown'}`;
   const cached = await getCached(cacheKey);
   if (cached) {
     return Object.assign({}, cached, { fromCache: true });
@@ -298,7 +305,7 @@ async function analyzeVideo(url, platformMeta) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url: url || null,
-        platform_meta: platformMeta || null
+        platform_meta: normalizedPlatformMeta
       })
     }, ctl.signal, VIDEO_FETCH_TIMEOUT_MS);
 

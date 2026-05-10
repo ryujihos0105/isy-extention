@@ -36,7 +36,7 @@ import socket
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from model import load_model, LateFusionModel
 from preprocess import preprocess_image
@@ -128,8 +128,10 @@ class TextRequest(BaseModel):
     text: str
 
 class PlatformMeta(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     platform: Optional[str] = None   # 'youtube' | 'instagram' | null
-    video_id: Optional[str] = None   # YouTube videoId, Instagram shortcode 등
+    video_id: Optional[str] = Field(default=None, alias="videoId")   # YouTube videoId, Instagram shortcode 등
 
 class VideoRequest(BaseModel):
     # url: 직접 다운로드 가능한 영상 URL. blob: 영상이면 null.
