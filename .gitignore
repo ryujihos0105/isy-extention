@@ -26,6 +26,8 @@ video/__MACOSX/
 *.log
 *.tmp
 *.temp
+demo_platform/uploads/
+demo_platform/disclosures.json
 
 # OS / editor files
 .DS_Store

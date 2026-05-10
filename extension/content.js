@@ -52,6 +52,73 @@
       || document.body;
   }
 
+  function showPlatformDisclosureStatus(target, state, payloadOrMessage) {
+    if (!target || !target.isConnected) return;
+    let panel = target.querySelector?.('.isy-platform-disclosure');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.className = 'isy-platform-disclosure';
+      target.appendChild(panel);
+    }
+
+    panel.classList.toggle('isy-platform-disclosure-error', state === 'error');
+    panel.classList.toggle('isy-platform-disclosure-done', state === 'done');
+
+    if (state === 'loading') {
+      panel.innerHTML = '';
+      const title = document.createElement('strong');
+      title.textContent = 'ISY 플랫폼 공개 라벨 등록 중';
+      const body = document.createElement('span');
+      body.textContent = '영상 분석 후 시청자에게 보일 공개 라벨을 등록합니다.';
+      panel.append(title, body);
+      return;
+    }
+
+    if (state === 'error') {
+      panel.innerHTML = '';
+      const title = document.createElement('strong');
+      title.textContent = '플랫폼 공개 라벨 등록 실패';
+      const body = document.createElement('span');
+      body.textContent = String(payloadOrMessage || '서버 연결 또는 분석 중 오류가 발생했습니다.');
+      panel.append(title, body);
+      return;
+    }
+
+    const payload = payloadOrMessage || {};
+    const disclosure = payload.disclosure || {};
+    panel.innerHTML = '';
+    const title = document.createElement('strong');
+    title.textContent = '플랫폼 공개 라벨 등록 완료';
+    const body = document.createElement('span');
+    body.textContent = `${disclosure.viewer_title || 'AI 공개 라벨'} · ${disclosure.percent ?? 0}%`;
+    const link = document.createElement('a');
+    link.href = `${LOCAL_API_BASE}${payload.watch_url || `/demo/watch/${payload.video_id || ''}`}`;
+    link.target = '_blank';
+    link.rel = 'noreferrer';
+    link.textContent = '시청자 화면 열기';
+    panel.append(title, body, link);
+  }
+
+  async function postUploadFile(endpoint, file) {
+    const form = new FormData();
+    form.append('file', file, file.name || 'upload.mp4');
+    const response = await fetch(`${LOCAL_API_BASE}${endpoint}`, {
+      method: 'POST',
+      body: form
+    });
+    if (!response.ok) {
+      let detail = response.statusText;
+      try {
+        const body = await response.json();
+        detail = body.detail || detail;
+      } catch {}
+      const err = new Error(`API ${response.status}: ${detail}`);
+      err.status = response.status;
+      throw err;
+    }
+    return response.json();
+  }
+
   async function analyzeUploadFile(file, target) {
     const key = `upload:${file.name}:${file.size}:${file.lastModified}`;
     if (ISY.state.analyzedUrls.has(key)) return;
@@ -60,27 +127,29 @@
 
     if (target && target.isConnected) {
       ISY.ui.showLoadingBadge(target, key);
+      showPlatformDisclosureStatus(target, 'loading');
     }
 
     try {
-      const form = new FormData();
-      form.append('file', file, file.name || 'upload.mp4');
-      const response = await fetch(`${LOCAL_API_BASE}/api/analyze/video-file`, {
-        method: 'POST',
-        body: form
-      });
-      if (!response.ok) {
-        let detail = response.statusText;
-        try {
-          const body = await response.json();
-          detail = body.detail || detail;
-        } catch {}
-        throw new Error(`API ${response.status}: ${detail}`);
+      let payload;
+      let platformRegistered = true;
+      try {
+        payload = await postUploadFile('/api/platform/demo-upload', file);
+      } catch (err) {
+        if (err.status !== 404) throw err;
+        platformRegistered = false;
+        payload = await postUploadFile('/api/analyze/video-file', file);
       }
-      const result = await response.json();
+      const result = payload.disclosure || payload;
       ISY.ui.showResultBadge(target, result, key);
+      if (platformRegistered) {
+        showPlatformDisclosureStatus(target, 'done', payload);
+      } else {
+        showPlatformDisclosureStatus(target, 'error', 'Platform demo endpoint is not running. Restart python server.py to enable viewer disclosure links.');
+      }
     } catch (err) {
       console.error('[ISY] Upload video analysis failed:', err);
+      showPlatformDisclosureStatus(target, 'error', err.message);
       recordFailure(key, 'video', err.message, target);
     } finally {
       progress.done += 1;

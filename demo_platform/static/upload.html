@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ISY Partner Upload Demo</title>
+  <link rel="stylesheet" href="/demo/static/demo.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <strong>ISY Partner Upload</strong>
+      <span>Platform Disclosure API</span>
+    </div>
+    <a class="nav-link" href="/demo/upload">Upload Console</a>
+  </header>
+
+  <main class="upload-shell">
+    <section class="upload-panel">
+      <div class="section-label">Creator Studio</div>
+      <h1>동영상 업로드</h1>
+      <form id="upload-form" class="upload-form">
+        <label class="drop-zone" for="video-file">
+          <input id="video-file" name="file" type="file" accept="video/*" required>
+          <span class="drop-title">업로드할 영상을 선택하세요</span>
+          <span id="file-name" class="drop-subtitle">MP4, MOV, WEBM</span>
+        </label>
+        <button id="submit-btn" class="primary-btn" type="submit">분석 후 공개 라벨 등록</button>
+      </form>
+    </section>
+
+    <aside class="status-panel">
+      <div class="section-label">Disclosure Status</div>
+      <div id="status" class="status idle">대기 중</div>
+      <div id="result-card" class="result-card hidden"></div>
+    </aside>
+  </main>
+
+  <script src="/demo/static/upload.js"></script>
+</body>
+</html>

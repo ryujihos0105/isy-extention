@@ -17,6 +17,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "versionv9"))
 
+import hashlib
+import json
 import time
 import threading
 import shutil
@@ -26,7 +28,9 @@ import torch.nn.functional as F
 import requests
 import traceback
 from collections import OrderedDict
+from datetime import datetime, timezone
 from io import BytesIO
+from pathlib import Path
 from PIL import Image
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -36,6 +40,7 @@ import socket
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from model import load_model, LateFusionModel
@@ -58,9 +63,16 @@ _video_model = None   # 영상 모델 추가 시 타입 지정
 _device: Optional[str] = None
 
 BASE_DIR      = os.path.dirname(__file__)
+BASE_PATH     = Path(BASE_DIR)
 IMAGE_WEIGHTS = os.path.join(BASE_DIR, "versionv9", MODEL_PATH)
 TEXT_WEIGHTS  = os.path.join(BASE_DIR, "text_model", "weights", "best.pt")
 VIDEO_DIR     = os.path.join(BASE_DIR, "video")
+DEMO_PLATFORM_DIR = BASE_PATH / "demo_platform"
+DEMO_UPLOAD_DIR = DEMO_PLATFORM_DIR / "uploads"
+DEMO_DISCLOSURES_PATH = DEMO_PLATFORM_DIR / "disclosures.json"
+DEMO_STATIC_DIR = DEMO_PLATFORM_DIR / "static"
+DEMO_MAX_VIDEO_BYTES = 500 * 1024 * 1024
+_platform_disclosure_lock = threading.Lock()
 
 
 def _load_text_model(device: str):
@@ -114,7 +126,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://studio.youtube.com"],
     allow_origin_regex=r"chrome-extension://.*",
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
 
@@ -164,6 +176,97 @@ _RESULT_CACHE_MAX = 200
 _RESULT_CACHE_TTL_SEC = 30 * 60
 _result_cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
 _result_cache_lock = threading.Lock()
+
+
+def _ensure_demo_platform_dirs() -> None:
+    DEMO_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    DEMO_STATIC_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _load_platform_disclosures() -> dict:
+    _ensure_demo_platform_dirs()
+    if not DEMO_DISCLOSURES_PATH.exists():
+        return {}
+    try:
+        with DEMO_DISCLOSURES_PATH.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        traceback.print_exc()
+        return {}
+
+
+def _save_platform_disclosures(data: dict) -> None:
+    _ensure_demo_platform_dirs()
+    tmp_path = DEMO_DISCLOSURES_PATH.with_suffix(".json.tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    tmp_path.replace(DEMO_DISCLOSURES_PATH)
+
+
+def _get_platform_disclosure(video_id: str) -> Optional[dict]:
+    with _platform_disclosure_lock:
+        return _load_platform_disclosures().get(video_id)
+
+
+def _put_platform_disclosure(video_id: str, disclosure: dict) -> None:
+    with _platform_disclosure_lock:
+        data = _load_platform_disclosures()
+        data[video_id] = disclosure
+        _save_platform_disclosures(data)
+
+
+def _result_level(fake_probability: float) -> str:
+    if fake_probability >= 0.6:
+        return "high"
+    if fake_probability >= 0.4:
+        return "uncertain"
+    return "low"
+
+
+def _build_platform_disclosure(
+    *,
+    video_id: str,
+    filename: str,
+    content_type: Optional[str],
+    file_size: int,
+    stored_filename: str,
+    sha256: str,
+    result: dict,
+) -> dict:
+    fake_probability = float(result.get("fake_probability") or 0)
+    real_probability = float(result.get("real_probability") or max(0, 1 - fake_probability))
+    percent = round(fake_probability * 100)
+    level = _result_level(fake_probability)
+    if level == "high":
+        viewer_title = "AI 생성 가능성 높음"
+        viewer_summary = f"ISY 자동 분석 결과 AI 생성 가능성이 {percent}%로 평가되었습니다."
+    elif level == "uncertain":
+        viewer_title = "AI 생성 여부 확인 필요"
+        viewer_summary = f"ISY 자동 분석 결과 AI 생성 가능성이 {percent}%로 평가되었습니다."
+    else:
+        viewer_title = "AI 생성 가능성 낮음"
+        viewer_summary = f"ISY 자동 분석 결과 AI 생성 가능성이 {percent}%로 낮게 평가되었습니다."
+
+    return {
+        "video_id": video_id,
+        "filename": filename,
+        "content_type": content_type or "video/mp4",
+        "file_size": file_size,
+        "stored_filename": stored_filename,
+        "sha256": sha256,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "source": "ISY Partner Disclosure API",
+        "media_type": "video",
+        "fake_probability": round(fake_probability, 4),
+        "real_probability": round(real_probability, 4),
+        "percent": percent,
+        "level": level,
+        "model": result.get("model") or "isy-video",
+        "raw_label": result.get("label"),
+        "viewer_title": viewer_title,
+        "viewer_summary": viewer_summary,
+    }
 
 
 def _cache_get(key: str) -> Optional[dict]:
@@ -484,6 +587,116 @@ def analyze_video_file(file: UploadFile = File(...)):
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     return {"url": None, "media_type": "video", **result}
+
+
+@app.post("/api/platform/demo-upload")
+def platform_demo_upload(file: UploadFile = File(...)):
+    if _video_model is None:
+        raise HTTPException(status_code=503, detail="video model is not loaded")
+
+    suffix = os.path.splitext(file.filename or "")[1].lower() or ".mp4"
+    if suffix not in {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}:
+        suffix = ".mp4"
+
+    _ensure_demo_platform_dirs()
+    temp_dir = tempfile.mkdtemp(prefix="isy-platform-upload-")
+    temp_path = os.path.join(temp_dir, "upload" + suffix)
+    hasher = hashlib.sha256()
+    total = 0
+    try:
+        with open(temp_path, "wb") as out:
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > DEMO_MAX_VIDEO_BYTES:
+                    raise HTTPException(status_code=413, detail="video file is too large for the demo platform")
+                hasher.update(chunk)
+                out.write(chunk)
+
+        sha256 = hasher.hexdigest()
+        video_id = sha256[:16]
+        stored_filename = f"{video_id}{suffix}"
+        stored_path = DEMO_UPLOAD_DIR / stored_filename
+        shutil.copyfile(temp_path, stored_path)
+
+        result = _video_model.predict_path(str(stored_path))
+        disclosure = _build_platform_disclosure(
+            video_id=video_id,
+            filename=file.filename or stored_filename,
+            content_type=file.content_type,
+            file_size=total,
+            stored_filename=stored_filename,
+            sha256=sha256,
+            result=result,
+        )
+        _put_platform_disclosure(video_id, disclosure)
+        return {
+            "ok": True,
+            "video_id": video_id,
+            "watch_url": f"/demo/watch/{video_id}",
+            "disclosure": disclosure,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"demo platform upload failed: {e}")
+    finally:
+        try:
+            file.file.close()
+        except Exception:
+            pass
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@app.get("/api/platform/disclosures/{video_id}")
+def get_platform_disclosure(video_id: str):
+    disclosure = _get_platform_disclosure(video_id)
+    if not disclosure:
+        raise HTTPException(status_code=404, detail="platform disclosure not found")
+    return disclosure
+
+
+@app.get("/api/platform/videos/{video_id}")
+def get_platform_video(video_id: str):
+    disclosure = _get_platform_disclosure(video_id)
+    if not disclosure:
+        raise HTTPException(status_code=404, detail="platform disclosure not found")
+    stored_filename = disclosure.get("stored_filename")
+    if not stored_filename:
+        raise HTTPException(status_code=404, detail="video file not found")
+    path = DEMO_UPLOAD_DIR / stored_filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="video file not found")
+    return FileResponse(path, media_type=disclosure.get("content_type") or "video/mp4")
+
+
+@app.get("/demo/upload")
+def platform_demo_upload_page():
+    path = DEMO_STATIC_DIR / "upload.html"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="demo upload page not found")
+    return FileResponse(path)
+
+
+@app.get("/demo/watch/{video_id}")
+def platform_demo_watch_page(video_id: str):
+    path = DEMO_STATIC_DIR / "watch.html"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="demo watch page not found")
+    return FileResponse(path)
+
+
+@app.get("/demo/static/{filename}")
+def platform_demo_static(filename: str):
+    if "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="invalid static path")
+    path = DEMO_STATIC_DIR / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="static file not found")
+    return FileResponse(path)
 
 
 if __name__ == "__main__":

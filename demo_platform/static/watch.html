@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ISY Partner Watch Demo</title>
+  <link rel="stylesheet" href="/demo/static/demo.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <strong>Mock Video Platform</strong>
+      <span>Viewer Experience</span>
+    </div>
+    <a class="nav-link" href="/demo/upload">Upload Console</a>
+  </header>
+
+  <main class="watch-shell">
+    <section class="player-column">
+      <div class="player-frame">
+        <video id="video" controls playsinline></video>
+        <div id="player-label" class="player-label">
+          <strong id="label-title">AI 공개 라벨</strong>
+          <span id="label-summary">분석 결과를 불러오는 중</span>
+        </div>
+      </div>
+      <h1 id="video-title">Partner disclosure demo</h1>
+      <p id="video-meta" class="video-meta">ISY Platform Disclosure API</p>
+    </section>
+
+    <aside class="details-panel">
+      <div class="section-label">How this content was made</div>
+      <div id="disclosure-card" class="disclosure-card loading">분석 결과를 불러오는 중</div>
+    </aside>
+  </main>
+
+  <script src="/demo/static/watch.js"></script>
+</body>
+</html>
