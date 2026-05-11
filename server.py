@@ -651,6 +651,12 @@ def platform_demo_upload(file: UploadFile = File(...)):
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+@app.get("/api/platform/disclosures")
+def list_platform_disclosures():
+    with _platform_disclosure_lock:
+        return list(_load_platform_disclosures().values())
+
+
 @app.get("/api/platform/disclosures/{video_id}")
 def get_platform_disclosure(video_id: str):
     disclosure = _get_platform_disclosure(video_id)
@@ -671,6 +677,14 @@ def get_platform_video(video_id: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="video file not found")
     return FileResponse(path, media_type=disclosure.get("content_type") or "video/mp4")
+
+
+@app.get("/demo/browse")
+def platform_demo_browse_page():
+    path = DEMO_STATIC_DIR / "browse.html"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="demo browse page not found")
+    return FileResponse(path)
 
 
 @app.get("/demo/upload")

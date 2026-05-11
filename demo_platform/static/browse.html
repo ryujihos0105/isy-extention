@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DEMO — 둘러보기</title>
+  <link rel="stylesheet" href="/demo/static/demo.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="brand-name">DEMO</span>
+      <span class="isy-verified-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z"/>
+          <path d="m9 12 2 2 4-4"/>
+        </svg>
+        ISY 검증
+      </span>
+    </div>
+    <a class="nav-link" href="/demo/upload">업로드 화면</a>
+  </header>
+
+  <main class="browse-shell">
+    <div id="video-grid" class="video-grid">
+      <p class="empty-state">영상을 불러오는 중입니다...</p>
+    </div>
+  </main>
+
+  <script src="/demo/static/browse.js"></script>
+</body>
+</html>

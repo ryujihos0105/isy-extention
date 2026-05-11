@@ -3,35 +3,49 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ISY Partner Upload Demo</title>
+  <title>DEMO Studio — 영상 업로드</title>
   <link rel="stylesheet" href="/demo/static/demo.css">
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <strong>ISY Partner Upload</strong>
-      <span>Platform Disclosure API</span>
+    <div class="topbar-brand">
+      <span class="brand-name">DEMO</span>
+      <span class="brand-sub">Studio</span>
+      <span class="isy-verified-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z"/>
+          <path d="m9 12 2 2 4-4"/>
+        </svg>
+        ISY 검증
+      </span>
     </div>
-    <a class="nav-link" href="/demo/upload">Upload Console</a>
+    <div class="topbar-nav">
+      <a class="nav-link" href="/demo/browse">홈</a>
+      <a class="nav-link" href="/demo/upload">업로드</a>
+    </div>
   </header>
 
   <main class="upload-shell">
     <section class="upload-panel">
-      <div class="section-label">Creator Studio</div>
+      <div class="section-label">DEMO Creator Studio</div>
       <h1>동영상 업로드</h1>
       <form id="upload-form" class="upload-form">
         <label class="drop-zone" for="video-file">
           <input id="video-file" name="file" type="file" accept="video/*" required>
+          <svg class="drop-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="6" width="15" height="12" rx="2"/>
+            <path d="m17 10 5-3v10l-5-3V10z"/>
+          </svg>
           <span class="drop-title">업로드할 영상을 선택하세요</span>
-          <span id="file-name" class="drop-subtitle">MP4, MOV, WEBM</span>
+          <span id="file-name" class="drop-subtitle">파일을 선택하면 자동으로 분석하고 공개 라벨을 등록합니다.</span>
         </label>
-        <button id="submit-btn" class="primary-btn" type="submit">분석 후 공개 라벨 등록</button>
+        <button id="submit-btn" class="primary-btn" type="submit">다시 분석하기</button>
       </form>
     </section>
 
     <aside class="status-panel">
-      <div class="section-label">Disclosure Status</div>
-      <div id="status" class="status idle">대기 중</div>
+      <div class="section-label">AI 공개 라벨</div>
+      <div id="status" class="status idle">영상 선택 대기 중</div>
       <div id="result-card" class="result-card hidden"></div>
     </aside>
   </main>

@@ -3,16 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ISY Partner Watch Demo</title>
+  <title>DEMO — 시청자 화면</title>
   <link rel="stylesheet" href="/demo/static/demo.css">
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <strong>Mock Video Platform</strong>
-      <span>Viewer Experience</span>
+    <div class="topbar-brand">
+      <span class="brand-name">DEMO</span>
+      <span class="isy-verified-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z"/>
+          <path d="m9 12 2 2 4-4"/>
+        </svg>
+        ISY 검증
+      </span>
     </div>
-    <a class="nav-link" href="/demo/upload">Upload Console</a>
+    <div class="topbar-nav">
+      <a class="nav-link" href="/demo/browse">홈</a>
+      <a class="nav-link" href="/demo/upload">업로드</a>
+    </div>
   </header>
 
   <main class="watch-shell">
@@ -20,18 +29,15 @@
       <div class="player-frame">
         <video id="video" controls playsinline></video>
         <div id="player-label" class="player-label">
-          <strong id="label-title">AI 공개 라벨</strong>
-          <span id="label-summary">분석 결과를 불러오는 중</span>
+          <span class="label-level-dot"></span>
+          <span class="label-verify">ISY 검증</span>
+          <span class="label-divider">·</span>
+          <span id="label-text">AI 콘텐츠 안내</span>
         </div>
       </div>
-      <h1 id="video-title">Partner disclosure demo</h1>
-      <p id="video-meta" class="video-meta">ISY Platform Disclosure API</p>
+      <h1 id="video-title">업로드된 영상</h1>
+      <p id="video-channel" class="video-channel">DEMO Creator · 방금 전</p>
     </section>
-
-    <aside class="details-panel">
-      <div class="section-label">How this content was made</div>
-      <div id="disclosure-card" class="disclosure-card loading">분석 결과를 불러오는 중</div>
-    </aside>
   </main>
 
   <script src="/demo/static/watch.js"></script>
