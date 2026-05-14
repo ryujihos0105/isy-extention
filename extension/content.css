@@ -29,11 +29,6 @@
   pointer-events: none !important;
 }
 
-.isy-media-wrap > img,
-.isy-media-wrap > video {
-  display: block;
-}
-
 .isy-badge:focus-visible,
 .isy-text-badge:focus-visible,
 .isy-close:focus-visible,

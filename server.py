@@ -56,10 +56,8 @@ from video_inference import (
 
 # ── 모델 전역 상태 ──────────────────────────────────────────
 _image_model: Optional[LateFusionModel] = None
-_video_model = None
-_device: Optional[str] = None
 _text_model = None
-_video_model = None   # 영상 모델 추가 시 타입 지정
+_video_model = None
 _device: Optional[str] = None
 
 BASE_DIR      = os.path.dirname(__file__)
@@ -76,11 +74,14 @@ _platform_disclosure_lock = threading.Lock()
 
 
 def _load_text_model(device: str):
-    """텍스트 모델 로더 — text_model/ 폴더 추가 후 구현"""
+    """텍스트 모델 로더 — text_model/ 폴더 추가 후 구현.
+    아직 미구현이므로 명시적으로 None 반환 — 호출 측은 _text_model is None 가드 필요.
+    """
     # sys.path.insert(0, os.path.join(BASE_DIR, "text_model"))
     # from model import load_model as load_text
     # return load_text(TEXT_WEIGHTS, device)
-    pass
+    print("[ISY] _load_text_model 호출됨 — 구현 전, None 반환")
+    return None
 
 
 def _load_video_model(device: str):
@@ -705,12 +706,17 @@ def platform_demo_watch_page(video_id: str):
 
 @app.get("/demo/static/{filename}")
 def platform_demo_static(filename: str):
-    if "/" in filename or "\\" in filename:
+    if "/" in filename or "\\" in filename or filename.startswith(".."):
         raise HTTPException(status_code=400, detail="invalid static path")
-    path = DEMO_STATIC_DIR / filename
-    if not path.exists():
+    base = DEMO_STATIC_DIR.resolve()
+    resolved = (DEMO_STATIC_DIR / filename).resolve()
+    try:
+        resolved.relative_to(base)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid static path")
+    if not resolved.is_file():
         raise HTTPException(status_code=404, detail="static file not found")
-    return FileResponse(path)
+    return FileResponse(resolved)
 
 
 if __name__ == "__main__":

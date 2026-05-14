@@ -13,6 +13,8 @@
   let lastUrl = location.href;
   let origPush = null;
   let origReplace = null;
+  // SPA가 history API를 우회하는 경우(예: YouTube 일부 경로)에도 URL 변경을 잡기 위한 폴링
+  let urlPollTimer = null;
 
   // stopAll에서 removeEventListener에 같은 참조를 전달하려면 모듈 스코프에 있어야 함
   function checkUrlChange() {
@@ -123,6 +125,9 @@
     };
 
     window.addEventListener('popstate', checkUrlChange);
+
+    // 백업 폴링 — history API가 우회된 SPA navigation도 1초 이내 감지
+    urlPollTimer = setInterval(checkUrlChange, 1000);
   }
 
   function stopAll() {
@@ -139,6 +144,10 @@
       origReplace = null;
       urlHookInstalled = false;
       urlChangeListeners.length = 0;
+    }
+    if (urlPollTimer) {
+      clearInterval(urlPollTimer);
+      urlPollTimer = null;
     }
 
     console.log('[ISY] Observer stopped');

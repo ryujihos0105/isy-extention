@@ -10,11 +10,7 @@ function setStatus(text, mode) {
   statusEl.className = `status ${mode || 'idle'}`;
 }
 
-function levelClass(level) {
-  if (level === 'high') return 'level-high';
-  if (level === 'uncertain') return 'level-uncertain';
-  return 'level-low';
-}
+const { levelClass } = window.ISY_DEMO;
 
 function resultTitle(disclosure) {
   if (disclosure.level === 'high') return 'AI 생성 가능성 높음';

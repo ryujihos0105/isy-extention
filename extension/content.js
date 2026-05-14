@@ -22,6 +22,9 @@
   let activeAnalyzeCount = 0;
   let analysisStarted = false;
   let followupObserverStarted = false;
+  // URL 변경 감지 fallback — history hook / polling이 모두 실패해도 popup이
+  // GET_STATE를 호출할 때마다 이 값과 location.href를 비교해 reset.
+  let lastSeenUrl = location.href;
 
   function getItemKey(item) {
     if (item.mediaType === 'text') {
@@ -337,15 +340,8 @@
       analyzeItems([...mediaItems, ...enabledTextItems]);
     });
 
-    ISY.observer.startUrlChangeDetector(() => {
-      if (!analysisStarted) return;
-      console.log('[ISY] URL changed - resetting');
-      resetPageState();
-      setTimeout(() => {
-        if (!analysisStarted) return;
-        analyzeItems(getCurrentItems().allItems);
-      }, 1000);
-    });
+    // URL 변경 감지는 startFollowupScanning과 분리해 page-level 초기화에서 한 번만 등록
+    // (아래 코드 참조). 여기서는 등록하지 않음 — 중복 등록 시 콜백이 여러 번 실행됨.
   }
 
   function scanAfterUserInteraction() {
@@ -654,6 +650,20 @@
         return false;
 
       case 'GET_STATE': {
+        // popup이 syncState 호출 시점에 URL 변경을 자체 감지해 reset.
+        // history hook / polling이 모두 작동 안 해도 이 경로로 catch됨.
+        if (location.href !== lastSeenUrl) {
+          console.log(`[ISY] GET_STATE: URL 변경 감지 ${lastSeenUrl} → ${location.href} — 결과 초기화`);
+          lastSeenUrl = location.href;
+          if (analysisStarted || ISY.state.results.size > 0 || analyzeQueue.length > 0) {
+            analysisStarted = false;
+            analyzeQueue.length = 0;
+            resetPageState();
+            try {
+              chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' }).catch(() => {});
+            } catch {}
+          }
+        }
         const allResults = Array.from(ISY.state.results.values());
         const highCount = allResults.filter(r => r.level === 'high').length;
         // uncertain(애매)은 사용자 관점에서 "확실히 의심 아님"이므로 low로 묶어 카운트.
@@ -688,6 +698,12 @@
         return false;
 
       case 'ANALYZE_CURRENT_VIDEO':
+        // 픽 모드가 켜진 상태에서 호출되면 overlay/이벤트 리스너가 살아있어
+        // 후속 클릭/스크롤이 차단된다 — 분석 시작 전에 안전하게 정리.
+        stopPickMode();
+        // followup scanning은 켜지 않는다 — Shorts 스크롤 시 새 영상이 자동으로
+        // 큐에 들어가 pending이 줄지 않게 되어 진행 상태가 영원히 '분석 중'으로 남음.
+        // 현재 영상 분석은 단일 영상 1회 분석으로 명확히 끝나야 한다.
         sendResponse(analyzeCurrentVideo());
         return false;
 
@@ -753,6 +769,23 @@
       scanAfterUserInteraction();
     }
   }, true);
+
+  // URL 변경 감지 — 분석 종류(ANALYZE_ALL / PICK / CURRENT_VIDEO)와 무관하게 한 번 등록.
+  // SPA 페이지 이동 시 이전 페이지의 누적 결과는 의미를 잃으므로 깨끗하게 정리한다.
+  ISY.observer.startUrlChangeDetector(() => {
+    lastSeenUrl = location.href;  // GET_STATE fallback과 중복 reset 방지
+    const hasResults = ISY.state.results.size > 0;
+    const hasQueue = analyzeQueue.length > 0;
+    if (!analysisStarted && !hasResults && !hasQueue) return;
+
+    console.log('[ISY] URL changed - resetting');
+    analysisStarted = false;
+    analyzeQueue.length = 0;
+    resetPageState();
+    try {
+      chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' }).catch(() => {});
+    } catch {}
+  });
 
   let restoreTimer = null;
   function scheduleRestoreResultBadges() {
