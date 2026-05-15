@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -c \"C:/Users/82108/OneDrive/바탕 화면/isy-extention/extension/content.js\")",
+      "Bash(git worktree *)"
+    ]
+  }
+}

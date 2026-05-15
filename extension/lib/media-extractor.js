@@ -47,11 +47,17 @@
   }
 
   function extractVideoUrl(video) {
-    if (video.src && !video.src.startsWith('blob:')) {
+    if (video.src) {
+      if (video.src.startsWith('blob:')) {
+        return { url: null, isPoster: false, isBlob: true, platformMeta: extractPlatformMeta() };
+      }
       return { url: video.src, isPoster: false };
     }
     const source = video.querySelector('source');
-    if (source?.src && !source.src.startsWith('blob:')) {
+    if (source?.src) {
+      if (source.src.startsWith('blob:')) {
+        return { url: null, isPoster: false, isBlob: true, platformMeta: extractPlatformMeta() };
+      }
       return { url: source.src, isPoster: false };
     }
     if (video.poster) {
@@ -123,6 +129,9 @@
 
   function getMinSizeForElement(element, adapter) {
     const sel = window.ISY.getActiveSelectors(adapter);
+    if (adapter.name === 'YouTube' && matchesAnySelector(element, sel.thumbnailSelectors)) {
+      return 1;
+    }
     if (adapter.name === 'Instagram' && matchesAnySelector(element, sel.thumbnailSelectors)) {
       return 80;
     }
@@ -156,6 +165,60 @@
     });
   }
 
+  const YOUTUBE_CARD_SELECTOR = [
+    'ytd-thumbnail',
+    'ytd-rich-item-renderer',
+    'ytd-video-renderer',
+    'ytd-compact-video-renderer',
+    'ytd-grid-video-renderer',
+    'ytd-reel-item-renderer',
+    'ytd-search-pyv-renderer',
+    'ytd-playlist-renderer',
+    'ytd-playlist-video-renderer',
+    'ytd-playlist-panel-video-renderer',
+    'yt-thumbnail-view-model',
+    'yt-lockup-view-model'
+  ].join(', ');
+
+  function isYouTubeAdapter(adapter) {
+    return adapter?.name === 'YouTube';
+  }
+
+  function extractYouTubeVideoId(url) {
+    if (!url) return null;
+    try {
+      const parsed = new URL(url, location.origin);
+      if (parsed.pathname === '/watch') return parsed.searchParams.get('v');
+
+      const match = parsed.pathname.match(/^\/(?:shorts|embed|live)\/([^/?#]+)/);
+      if (match) return match[1];
+    } catch {}
+    return null;
+  }
+
+  function buildYouTubeThumbnailUrl(videoId) {
+    return videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null;
+  }
+
+  function findYouTubeCard(element) {
+    return element?.closest?.(YOUTUBE_CARD_SELECTOR) || null;
+  }
+
+  function getYouTubeCardThumbnail(card) {
+    if (!card || window.ISY.isExtensionElement(card)) return null;
+
+    const anchor = card.querySelector('a[href*="/watch"], a[href*="/shorts/"], a[href*="/live/"]');
+    const videoId = extractYouTubeVideoId(anchor?.getAttribute('href') || anchor?.href);
+    const url = buildYouTubeThumbnailUrl(videoId);
+    if (!url) return null;
+
+    return {
+      url,
+      videoId,
+      element: card.querySelector('img[src*="ytimg.com"], img.ytCoreImageHost') || card
+    };
+  }
+
   function extractMedia(rootElement) {
     const root = rootElement || document.body;
     const adapter = window.ISY.state.currentAdapter;
@@ -187,7 +250,13 @@
             if (isExcludedByParent(img, sel.excludeParents)) return;
             if (!isLargeEnough(img, getMinSizeForElement(img, adapter))) return;
 
-            const url = extractImageUrl(img);
+            let url = extractImageUrl(img);
+            let videoId = null;
+            if (isYouTubeAdapter(adapter)) {
+              const fallback = getYouTubeCardThumbnail(findYouTubeCard(img));
+              url = fallback?.url || url;
+              videoId = fallback?.videoId || null;
+            }
             if (!url) return;
 
             addOrReplaceItem(url, {
@@ -195,7 +264,8 @@
               mediaType: 'image',
               element: img,
               source: adapter.name,
-              isThumbnail: matchesAnySelector(img, sel.thumbnailSelectors)
+              isThumbnail: matchesAnySelector(img, sel.thumbnailSelectors),
+              platformMeta: videoId ? { platform: 'youtube', videoId } : null
             });
           });
         } catch (err) {
@@ -205,6 +275,25 @@
     }
 
     addImages(sel.imageSelectors || []);
+
+    if (isYouTubeAdapter(adapter)) {
+      root.querySelectorAll(YOUTUBE_CARD_SELECTOR).forEach(card => {
+        if (window.ISY.isExtensionElement(card)) return;
+        if (isExcludedByParent(card, sel.excludeParents)) return;
+
+        const fallback = getYouTubeCardThumbnail(card);
+        if (!fallback) return;
+
+        addOrReplaceItem(fallback.url, {
+          url: fallback.url,
+          mediaType: 'image',
+          element: fallback.element,
+          source: adapter.name,
+          isThumbnail: true,
+          platformMeta: { platform: 'youtube', videoId: fallback.videoId }
+        });
+      });
+    }
 
     if (byUrl.size === 0 && sel.imageFallback) {
       addImages(['img']);
@@ -218,15 +307,21 @@
 
           const result = extractVideoUrl(video);
           if (!result) return;
+          const platformMeta = result.platformMeta || (result.isPoster ? extractPlatformMeta() : null);
+          const itemKey = result.url
+            || (platformMeta?.videoId
+              ? `video:${platformMeta.platform || 'unknown'}:${platformMeta.videoId}`
+              : null);
+          if (!itemKey) return;
 
-          addOrReplaceItem(result.url, {
+          addOrReplaceItem(itemKey, {
             url: result.url,
             mediaType: result.isPoster ? 'image' : 'video',
             element: video,
             source: adapter.name,
             isPosterFallback: result.isPoster,
             // blob: URL인 경우 직접 접근 불가 — platformMeta로 서버가 우회 처리
-            platformMeta: result.isPoster ? extractPlatformMeta() : null
+            platformMeta
           });
         });
       } catch (err) {
@@ -234,7 +329,12 @@
       }
     });
 
-    return Array.from(byUrl.values()).filter(item => isActuallyVisible(item.element));
+    // 추출 시점 visibility 필터는 의도적으로 적용하지 않는다 — YouTube 호버 프리뷰처럼
+    // 일시적으로 img가 숨겨지는 동안 추출이 돌면 해당 항목이 영영 누락된다(class/style 변경은
+    // observer attributeFilter 대상이 아니라 재추출이 안 트리거됨). 분석 자체는 URL만 있으면
+    // 충분하고, 배지 attach는 element가 다시 보일 때 자연스럽게 노출된다. detach된 element는
+    // attachBadge의 isConnected 검사가 걸러낸다.
+    return Array.from(byUrl.values());
   }
 
   const BLOCK_TAGS = new Set([

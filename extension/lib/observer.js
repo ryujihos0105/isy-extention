@@ -13,6 +13,8 @@
   let lastUrl = location.href;
   let origPush = null;
   let origReplace = null;
+  // SPA가 history API를 우회하는 경우(예: YouTube 일부 경로)에도 URL 변경을 잡기 위한 폴링
+  let urlPollTimer = null;
 
   // stopAll에서 removeEventListener에 같은 참조를 전달하려면 모듈 스코프에 있어야 함
   function checkUrlChange() {
@@ -43,6 +45,16 @@
           const target = mutation.target;
           if (target && target.nodeType === Node.ELEMENT_NODE && !window.ISY.isExtensionElement(target)) {
             if (target.tagName === 'IMG' || target.tagName === 'VIDEO' || target.tagName === 'SOURCE') {
+              // 가상화로 재활용된 <img>의 src가 새 콘텐츠로 바뀌면, 이전 결과 배지를 떼서
+              // 재분석된 결과가 화면에 새로 그려지게 한다. 같은 URL로 잠깐 돌아오는
+              // 깜빡임은 isyBadgedSrc 비교로 무시.
+              if (window.ISY.badges && target.dataset && target.dataset.isyBadged) {
+                const prevSrc = target.dataset.isyBadgedSrc || '';
+                const nextSrc = target.currentSrc || target.src || '';
+                if (prevSrc && nextSrc && prevSrc !== nextSrc) {
+                  window.ISY.badges.detach(target);
+                }
+              }
               hasNewMedia = true;
             }
           }
@@ -113,6 +125,9 @@
     };
 
     window.addEventListener('popstate', checkUrlChange);
+
+    // 백업 폴링 — history API가 우회된 SPA navigation도 1초 이내 감지
+    urlPollTimer = setInterval(checkUrlChange, 1000);
   }
 
   function stopAll() {
@@ -129,6 +144,10 @@
       origReplace = null;
       urlHookInstalled = false;
       urlChangeListeners.length = 0;
+    }
+    if (urlPollTimer) {
+      clearInterval(urlPollTimer);
+      urlPollTimer = null;
     }
 
     console.log('[ISY] Observer stopped');

@@ -131,6 +131,19 @@ isy-extention/
 
 ## API
 
+### Platform disclosure demo
+
+플랫폼 협약을 가정한 시연 화면입니다. 업로드 페이지에서 영상을 분석하면 서버가 분석 결과를
+`Platform Disclosure API` 결과로 저장하고, 시청자 페이지는 같은 결과를 읽어 영상 플레이어와
+설명 영역에 공개 라벨을 표시합니다.
+
+```bash
+python server.py
+```
+
+- 업로드 데모: http://localhost:8000/demo/upload
+- 시청자 데모: 업로드 완료 후 표시되는 `시청자 화면 열기` 링크
+
 ### `POST /api/analyze/image`
 
 ```bash
@@ -171,6 +184,24 @@ text_model/          또는       video_model/
 ```
 
 그다음 `server.py`의 `_load_text_model()` 또는 `_load_video_model()` 함수를 구현하고 서버를 재시작합니다.
+
+---
+
+## 개발자 디버그 옵션
+
+사용자용 결과 라벨에는 판정에 필요한 정보만 표시합니다. 콘텐츠 유형, 얼굴 크롭 결과, 모델명 같은 내부 분석 정보는 기본적으로 숨겨져 있습니다.
+
+개발 중 상세 결과 오버레이에서 내부 정보를 다시 보고 싶으면 분석 대상 페이지의 DevTools 콘솔에서 아래 값을 켭니다.
+
+```js
+localStorage.setItem('isyDebugDetails', 'true')
+```
+
+다시 사용자 기본 표시로 되돌리려면 아래 값을 제거합니다.
+
+```js
+localStorage.removeItem('isyDebugDetails')
+```
 
 ---
 
