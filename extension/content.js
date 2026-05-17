@@ -14,6 +14,7 @@
   console.log(`[ISY] Ready on ${window.location.hostname} (${adapter.name})`);
 
   const TEXT_ANALYSIS_ENABLED = false;
+  const LOCAL_API_BASE = 'http://localhost:8000';
   const ANALYZE_CONCURRENCY = 4;
   const progress = { pending: 0, done: 0, failed: 0 };
   const focusCursors = { high: 0, low: 0, failed: 0 };
@@ -21,17 +22,153 @@
   let activeAnalyzeCount = 0;
   let analysisStarted = false;
   let followupObserverStarted = false;
+  // URL 변경 감지 fallback — history hook / polling이 모두 실패해도 popup이
+  // GET_STATE를 호출할 때마다 이 값과 location.href를 비교해 reset.
+  let lastSeenUrl = location.href;
 
   function getItemKey(item) {
-    return item.mediaType === 'text'
-      ? 'text:' + item.text.slice(0, 120).replace(/\s+/g, ' ')
-      : item.url;
+    if (item.mediaType === 'text') {
+      return 'text:' + item.text.slice(0, 120).replace(/\s+/g, ' ');
+    }
+    if (item.mediaType === 'video' && item.platformMeta?.videoId) {
+      return `video:${item.platformMeta.platform || 'unknown'}:${item.platformMeta.videoId}`;
+    }
+    return item.url;
   }
 
   function getCurrentItems() {
     const mediaItems = ISY.extractMedia();
     const textItems = TEXT_ANALYSIS_ENABLED ? ISY.extractText() : [];
     return { mediaItems, textItems, allItems: [...mediaItems, ...textItems] };
+  }
+
+  function isVideoFile(file) {
+    return !!file && (
+      file.type?.startsWith('video/')
+      || /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(file.name || '')
+    );
+  }
+
+  function getUploadBadgeTarget(input) {
+    return input.closest?.('ytcp-uploads-dialog, tp-yt-paper-dialog, ytcp-dialog')
+      || document.querySelector('ytcp-uploads-dialog, tp-yt-paper-dialog, ytcp-dialog')
+      || document.body;
+  }
+
+  function showPlatformDisclosureStatus(target, state, payloadOrMessage) {
+    if (!target || !target.isConnected) return;
+    let panel = target.querySelector?.('.isy-platform-disclosure');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.className = 'isy-platform-disclosure';
+      target.appendChild(panel);
+    }
+
+    panel.classList.toggle('isy-platform-disclosure-error', state === 'error');
+    panel.classList.toggle('isy-platform-disclosure-done', state === 'done');
+
+    if (state === 'loading') {
+      panel.innerHTML = '';
+      const title = document.createElement('strong');
+      title.textContent = 'ISY 플랫폼 공개 라벨 등록 중';
+      const body = document.createElement('span');
+      body.textContent = '영상 분석 후 시청자에게 보일 공개 라벨을 등록합니다.';
+      panel.append(title, body);
+      return;
+    }
+
+    if (state === 'error') {
+      panel.innerHTML = '';
+      const title = document.createElement('strong');
+      title.textContent = '플랫폼 공개 라벨 등록 실패';
+      const body = document.createElement('span');
+      body.textContent = String(payloadOrMessage || '서버 연결 또는 분석 중 오류가 발생했습니다.');
+      panel.append(title, body);
+      return;
+    }
+
+    const payload = payloadOrMessage || {};
+    const disclosure = payload.disclosure || {};
+    panel.innerHTML = '';
+    const title = document.createElement('strong');
+    title.textContent = '플랫폼 공개 라벨 등록 완료';
+    const body = document.createElement('span');
+    body.textContent = `${disclosure.viewer_title || 'AI 공개 라벨'} · ${disclosure.percent ?? 0}%`;
+    const link = document.createElement('a');
+    link.href = `${LOCAL_API_BASE}${payload.watch_url || `/demo/watch/${payload.video_id || ''}`}`;
+    link.target = '_blank';
+    link.rel = 'noreferrer';
+    link.textContent = '시청자 화면 열기';
+    panel.append(title, body, link);
+  }
+
+  async function postUploadFile(endpoint, file) {
+    const form = new FormData();
+    form.append('file', file, file.name || 'upload.mp4');
+    const response = await fetch(`${LOCAL_API_BASE}${endpoint}`, {
+      method: 'POST',
+      body: form
+    });
+    if (!response.ok) {
+      let detail = response.statusText;
+      try {
+        const body = await response.json();
+        detail = body.detail || detail;
+      } catch {}
+      const err = new Error(`API ${response.status}: ${detail}`);
+      err.status = response.status;
+      throw err;
+    }
+    return response.json();
+  }
+
+  async function analyzeUploadFile(file, target) {
+    const key = `upload:${file.name}:${file.size}:${file.lastModified}`;
+    if (ISY.state.analyzedUrls.has(key)) return;
+    ISY.state.analyzedUrls.add(key);
+    progress.pending += 1;
+
+    if (target && target.isConnected) {
+      ISY.ui.showLoadingBadge(target, key);
+      showPlatformDisclosureStatus(target, 'loading');
+    }
+
+    try {
+      let payload;
+      let platformRegistered = true;
+      try {
+        payload = await postUploadFile('/api/platform/demo-upload', file);
+      } catch (err) {
+        if (err.status !== 404) throw err;
+        platformRegistered = false;
+        payload = await postUploadFile('/api/analyze/video-file', file);
+      }
+      const result = payload.disclosure || payload;
+      ISY.ui.showResultBadge(target, result, key);
+      if (platformRegistered) {
+        showPlatformDisclosureStatus(target, 'done', payload);
+      } else {
+        showPlatformDisclosureStatus(target, 'error', 'Platform demo endpoint is not running. Restart python server.py to enable viewer disclosure links.');
+      }
+    } catch (err) {
+      console.error('[ISY] Upload video analysis failed:', err);
+      showPlatformDisclosureStatus(target, 'error', err.message);
+      recordFailure(key, 'video', err.message, target);
+    } finally {
+      progress.done += 1;
+      if (ISY.badges.refreshVisibility) ISY.badges.refreshVisibility();
+    }
+  }
+
+  function startYouTubeStudioUploadWatcher() {
+    if (location.hostname !== 'studio.youtube.com') return;
+    document.addEventListener('change', event => {
+      const input = event.target;
+      if (!input || input.tagName !== 'INPUT' || input.type !== 'file') return;
+      const file = Array.from(input.files || []).find(isVideoFile);
+      if (!file) return;
+      analyzeUploadFile(file, getUploadBadgeTarget(input));
+    }, true);
   }
 
   function recordFailure(key, mediaType, error, element) {
@@ -203,15 +340,8 @@
       analyzeItems([...mediaItems, ...enabledTextItems]);
     });
 
-    ISY.observer.startUrlChangeDetector(() => {
-      if (!analysisStarted) return;
-      console.log('[ISY] URL changed - resetting');
-      resetPageState();
-      setTimeout(() => {
-        if (!analysisStarted) return;
-        analyzeItems(getCurrentItems().allItems);
-      }, 1000);
-    });
+    // URL 변경 감지는 startFollowupScanning과 분리해 page-level 초기화에서 한 번만 등록
+    // (아래 코드 참조). 여기서는 등록하지 않음 — 중복 등록 시 콜백이 여러 번 실행됨.
   }
 
   function scanAfterUserInteraction() {
@@ -285,6 +415,28 @@
 
     if (width <= 1 || height <= 1) return null;
     return { left, top, right, bottom, width, height };
+  }
+
+  function analyzeCurrentVideo() {
+    const candidates = getCurrentItems().mediaItems
+      .filter(item => item.mediaType === 'video' && item.element && item.element.isConnected)
+      .map(item => ({ item, rect: getVisibleRect(item.element) }))
+      .filter(candidate => candidate.rect);
+
+    if (candidates.length === 0) {
+      return { ok: false, error: '분석할 현재 영상을 찾지 못했습니다.' };
+    }
+
+    candidates.sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
+    const item = candidates[0].item;
+    const key = getItemKey(item);
+    if (item.element?.dataset?.isyBadged) {
+      ISY.badges.detach(item.element);
+    }
+    ISY.state.analyzedUrls.delete(key);
+    ISY.state.results.delete(key);
+    analyzeItems([item], { force: true });
+    return { ok: true, count: 1 };
   }
 
   function getCandidateForPoint(candidates, clientX, clientY) {
@@ -498,6 +650,20 @@
         return false;
 
       case 'GET_STATE': {
+        // popup이 syncState 호출 시점에 URL 변경을 자체 감지해 reset.
+        // history hook / polling이 모두 작동 안 해도 이 경로로 catch됨.
+        if (location.href !== lastSeenUrl) {
+          console.log(`[ISY] GET_STATE: URL 변경 감지 ${lastSeenUrl} → ${location.href} — 결과 초기화`);
+          lastSeenUrl = location.href;
+          if (analysisStarted || ISY.state.results.size > 0 || analyzeQueue.length > 0) {
+            analysisStarted = false;
+            analyzeQueue.length = 0;
+            resetPageState();
+            try {
+              chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' }).catch(() => {});
+            } catch {}
+          }
+        }
         const allResults = Array.from(ISY.state.results.values());
         const highCount = allResults.filter(r => r.level === 'high').length;
         // uncertain(애매)은 사용자 관점에서 "확실히 의심 아님"이므로 low로 묶어 카운트.
@@ -529,6 +695,16 @@
 
       case 'START_PICK_ANALYSIS':
         sendResponse(startPickAnalysis());
+        return false;
+
+      case 'ANALYZE_CURRENT_VIDEO':
+        // 픽 모드가 켜진 상태에서 호출되면 overlay/이벤트 리스너가 살아있어
+        // 후속 클릭/스크롤이 차단된다 — 분석 시작 전에 안전하게 정리.
+        stopPickMode();
+        // followup scanning은 켜지 않는다 — Shorts 스크롤 시 새 영상이 자동으로
+        // 큐에 들어가 pending이 줄지 않게 되어 진행 상태가 영원히 '분석 중'으로 남음.
+        // 현재 영상 분석은 단일 영상 1회 분석으로 명확히 끝나야 한다.
+        sendResponse(analyzeCurrentVideo());
         return false;
 
       case 'FOCUS_RESULT':
@@ -594,6 +770,23 @@
     }
   }, true);
 
+  // URL 변경 감지 — 분석 종류(ANALYZE_ALL / PICK / CURRENT_VIDEO)와 무관하게 한 번 등록.
+  // SPA 페이지 이동 시 이전 페이지의 누적 결과는 의미를 잃으므로 깨끗하게 정리한다.
+  ISY.observer.startUrlChangeDetector(() => {
+    lastSeenUrl = location.href;  // GET_STATE fallback과 중복 reset 방지
+    const hasResults = ISY.state.results.size > 0;
+    const hasQueue = analyzeQueue.length > 0;
+    if (!analysisStarted && !hasResults && !hasQueue) return;
+
+    console.log('[ISY] URL changed - resetting');
+    analysisStarted = false;
+    analyzeQueue.length = 0;
+    resetPageState();
+    try {
+      chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' }).catch(() => {});
+    } catch {}
+  });
+
   let restoreTimer = null;
   function scheduleRestoreResultBadges() {
     if (ISY.state.results.size === 0 || restoreTimer) return;
@@ -605,4 +798,5 @@
 
   window.addEventListener('scroll', scheduleRestoreResultBadges, true);
   window.addEventListener('resize', scheduleRestoreResultBadges, true);
+  startYouTubeStudioUploadWatcher();
 })();

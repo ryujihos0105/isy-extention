@@ -47,11 +47,17 @@
   }
 
   function extractVideoUrl(video) {
-    if (video.src && !video.src.startsWith('blob:')) {
+    if (video.src) {
+      if (video.src.startsWith('blob:')) {
+        return { url: null, isPoster: false, isBlob: true, platformMeta: extractPlatformMeta() };
+      }
       return { url: video.src, isPoster: false };
     }
     const source = video.querySelector('source');
-    if (source?.src && !source.src.startsWith('blob:')) {
+    if (source?.src) {
+      if (source.src.startsWith('blob:')) {
+        return { url: null, isPoster: false, isBlob: true, platformMeta: extractPlatformMeta() };
+      }
       return { url: source.src, isPoster: false };
     }
     if (video.poster) {
@@ -301,15 +307,21 @@
 
           const result = extractVideoUrl(video);
           if (!result) return;
+          const platformMeta = result.platformMeta || (result.isPoster ? extractPlatformMeta() : null);
+          const itemKey = result.url
+            || (platformMeta?.videoId
+              ? `video:${platformMeta.platform || 'unknown'}:${platformMeta.videoId}`
+              : null);
+          if (!itemKey) return;
 
-          addOrReplaceItem(result.url, {
+          addOrReplaceItem(itemKey, {
             url: result.url,
             mediaType: result.isPoster ? 'image' : 'video',
             element: video,
             source: adapter.name,
             isPosterFallback: result.isPoster,
             // blob: URL인 경우 직접 접근 불가 — platformMeta로 서버가 우회 처리
-            platformMeta: result.isPoster ? extractPlatformMeta() : null
+            platformMeta
           });
         });
       } catch (err) {

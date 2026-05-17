@@ -317,10 +317,20 @@
           textSelectors: []
         }
       },
-      containerFinder: target =>
-        target.closest('ytd-thumbnail, ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytd-reel-item-renderer, ytd-search-pyv-renderer, ytd-playlist-renderer, ytd-reel-video-renderer, ytd-playlist-video-renderer, ytd-playlist-panel-video-renderer, yt-thumbnail-view-model, yt-lockup-view-model')
-        || target.parentElement
-        || document.body
+      containerFinder: target => {
+        // Shorts에서 video를 target으로 받은 경우, ytd-reel-video-renderer는 뷰포트 전체
+        // 크기라 우상단 배지가 화면 우상단처럼 보인다. 실제 영상과 같은 크기인
+        // .html5-video-container (또는 video의 직속 부모)를 컨테이너로 좁힌다.
+        if (location.pathname.startsWith('/shorts/') && target?.tagName === 'VIDEO') {
+          return target.closest('.html5-video-container')
+            || target.parentElement
+            || target.closest('ytd-reel-video-renderer')
+            || document.body;
+        }
+        return target.closest('ytd-thumbnail, ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytd-reel-item-renderer, ytd-search-pyv-renderer, ytd-playlist-renderer, ytd-reel-video-renderer, ytd-playlist-video-renderer, ytd-playlist-panel-video-renderer, yt-thumbnail-view-model, yt-lockup-view-model')
+          || target.parentElement
+          || document.body;
+      }
     },
 
     'news.naver.com': {

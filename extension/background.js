@@ -4,6 +4,7 @@
 
 const API_BASE = "http://localhost:8000";  // 실제 백엔드로 교체 필요
 const FETCH_TIMEOUT_MS = 18000;
+const VIDEO_FETCH_TIMEOUT_MS = 180000;
 const RETRY_COUNT = 1;
 const RETRY_BACKOFF_MS = 1000;
 
@@ -11,7 +12,7 @@ const RETRY_BACKOFF_MS = 1000;
 // - 외부 STOP은 즉시 throw (사용자 의도). 자체 timeout은 1회 retry (서버 큐 적체 흡수).
 // - 5xx 응답도 retry 대상으로 처리한다 (fetch는 5xx에서 reject하지 않으므로 별도 분기).
 // - timeout은 시도마다 새로 시작 (호출자가 누적 25s를 한번 거는 게 아니라, 시도당 25s를 보장).
-async function fetchWithRetry(url, options, externalSignal) {
+async function fetchWithRetry(url, options, externalSignal, timeoutMs = FETCH_TIMEOUT_MS) {
   let lastErr;
   for (let i = 0; i <= RETRY_COUNT; i++) {
     if (externalSignal?.aborted) {
@@ -19,7 +20,7 @@ async function fetchWithRetry(url, options, externalSignal) {
     }
 
     const timeoutCtl = new AbortController();
-    const timer = setTimeout(() => timeoutCtl.abort(), FETCH_TIMEOUT_MS);
+    const timer = setTimeout(() => timeoutCtl.abort(), timeoutMs);
     const signal = externalSignal
       ? AbortSignal.any([externalSignal, timeoutCtl.signal])
       : timeoutCtl.signal;
@@ -282,9 +283,16 @@ async function analyzeContent(url, mediaType, text, platformMeta, pageUrl, itemM
 //   - url이 있으면 서버가 직접 다운로드
 //   - url이 null이면 platformMeta.videoId로 서버가 플랫폼 API를 통해 처리
 async function analyzeVideo(url, platformMeta) {
+  const normalizedPlatformMeta = platformMeta
+    ? {
+      platform: platformMeta.platform || null,
+      video_id: platformMeta.video_id || platformMeta.videoId || null,
+      videoId: platformMeta.videoId || platformMeta.video_id || null
+    }
+    : null;
   const cacheKey = url
     ? normalizeUrlForCache(url)
-    : `video:${platformMeta?.platform ?? 'unknown'}:${platformMeta?.videoId ?? 'unknown'}`;
+    : `video:${normalizedPlatformMeta?.platform ?? 'unknown'}:${normalizedPlatformMeta?.video_id ?? 'unknown'}`;
   const cached = await getCached(cacheKey);
   if (cached) {
     return Object.assign({}, cached, { fromCache: true });
@@ -297,9 +305,9 @@ async function analyzeVideo(url, platformMeta) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url: url || null,
-        platform_meta: platformMeta || null
+        platform_meta: normalizedPlatformMeta
       })
-    }, ctl.signal);
+    }, ctl.signal, VIDEO_FETCH_TIMEOUT_MS);
 
     if (!response.ok) {
       throw new Error(await formatApiError(response));

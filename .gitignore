@@ -19,11 +19,15 @@ env/
 *.onnx
 *.pkl
 *.joblib
+video/checkpoints_*/
+video/__MACOSX/
 
 # Logs / temporary files
 *.log
 *.tmp
 *.temp
+demo_platform/uploads/
+demo_platform/disclosures.json
 
 # OS / editor files
 .DS_Store

@@ -131,6 +131,19 @@ isy-extention/
 
 ## API
 
+### Platform disclosure demo
+
+플랫폼 협약을 가정한 시연 화면입니다. 업로드 페이지에서 영상을 분석하면 서버가 분석 결과를
+`Platform Disclosure API` 결과로 저장하고, 시청자 페이지는 같은 결과를 읽어 영상 플레이어와
+설명 영역에 공개 라벨을 표시합니다.
+
+```bash
+python server.py
+```
+
+- 업로드 데모: http://localhost:8000/demo/upload
+- 시청자 데모: 업로드 완료 후 표시되는 `시청자 화면 열기` 링크
+
 ### `POST /api/analyze/image`
 
 ```bash

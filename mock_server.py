@@ -37,12 +37,17 @@ async def analyze_image(req: AnalyzeRequest):
     is_suspicious = any(kw in req.url.lower() for kw in keywords)
 
     fake_prob = random.uniform(0.6, 0.95) if is_suspicious else random.uniform(0.05, 0.35)
+    real_prob = 1 - fake_prob
 
+    # server.py와 동일한 응답 스키마 유지
     return {
         "url": req.url,
         "media_type": "image",
         "fake_probability": round(fake_prob, 4),
-        "consistency_score": round((1 - fake_prob) * 100),
+        "real_probability": round(real_prob, 4),
+        "label": "FAKE" if fake_prob > 0.5 else "REAL",
+        "consistency_score": round(real_prob * 100),
+        "crop_status": "mock",
         "model": "mock-v1",
     }
 
@@ -50,16 +55,22 @@ async def analyze_image(req: AnalyzeRequest):
 @app.post("/api/analyze/video")
 async def analyze_video(req: VideoRequest):
     fake_prob = random.uniform(0.1, 0.9)
+    real_prob = 1 - fake_prob
 
     return {
         "url": req.url,
         "media_type": "video",
         "fake_probability": round(fake_prob, 4),
-        "consistency_score": round((1 - fake_prob) * 100),
+        "real_probability": round(real_prob, 4),
+        "label": "FAKE" if fake_prob > 0.5 else "REAL",
+        "consistency_score": round(real_prob * 100),
         "model": "mock-v1",
     }
 
 
+# NOTE: server.py는 텍스트 모델 미구현 상태에서 503/501을 반환하지만,
+# mock_server는 "모델 없이 UI/동작을 테스트"하기 위한 도구이므로
+# 텍스트도 그럴듯한 가짜 응답을 그대로 유지한다 (의도된 차이).
 @app.post("/api/analyze/text")
 async def analyze_text(req: TextRequest):
     text = req.text

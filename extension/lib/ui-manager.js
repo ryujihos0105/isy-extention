@@ -188,6 +188,7 @@
     badge.setAttribute('tabindex', '0');
     badge.setAttribute('aria-label', meta.ariaText);
     badge.dataset.isyLevel = meta.level;
+    if (itemKey) badge.dataset.isyItemKey = itemKey;
 
     function open(e) {
       e.preventDefault();
