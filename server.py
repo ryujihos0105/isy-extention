@@ -225,6 +225,14 @@ def _result_level(fake_probability: float) -> str:
     return "low"
 
 
+# (viewer_title, summary_adverb) — adverb는 "평가되었습니다" 앞에 붙는 부사
+_LEVEL_VIEWER_LABELS: dict[str, tuple[str, str]] = {
+    "high":      ("AI 생성 가능성 높음",    ""),
+    "uncertain": ("AI 생성 여부 확인 필요", ""),
+    "low":       ("AI 생성 가능성 낮음",    "낮게 "),
+}
+
+
 def _build_platform_disclosure(
     *,
     video_id: str,
@@ -239,15 +247,8 @@ def _build_platform_disclosure(
     real_probability = float(result.get("real_probability") or max(0, 1 - fake_probability))
     percent = round(fake_probability * 100)
     level = _result_level(fake_probability)
-    if level == "high":
-        viewer_title = "AI 생성 가능성 높음"
-        viewer_summary = f"ISY 자동 분석 결과 AI 생성 가능성이 {percent}%로 평가되었습니다."
-    elif level == "uncertain":
-        viewer_title = "AI 생성 여부 확인 필요"
-        viewer_summary = f"ISY 자동 분석 결과 AI 생성 가능성이 {percent}%로 평가되었습니다."
-    else:
-        viewer_title = "AI 생성 가능성 낮음"
-        viewer_summary = f"ISY 자동 분석 결과 AI 생성 가능성이 {percent}%로 낮게 평가되었습니다."
+    viewer_title, adverb = _LEVEL_VIEWER_LABELS.get(level, ("AI 생성 여부 불명확", ""))
+    viewer_summary = f"ISY 자동 분석 결과 AI 생성 가능성이 {percent}%로 {adverb}평가되었습니다."
 
     return {
         "video_id": video_id,

@@ -287,8 +287,6 @@
     document.addEventListener('yt-page-data-updated', onNavigation, true);
   }
 
-  installVisibilityListeners();
-
   window.ISY.badges = {
     attach: attachBadge,
     detach: detachBadge,

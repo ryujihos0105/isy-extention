@@ -377,6 +377,23 @@
     }
   }
 
+  // ── 분석 상태 초기화 헬퍼 ────────────────────────────────
+  // URL 변경 감지 경로와 사용자 명시 중단 경로에서 공통 사용.
+  function sendStopBg() {
+    try { chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' }).catch(() => {}); } catch {}
+  }
+
+  // 사용자가 명시적으로 분석을 중단/초기화할 때 사용.
+  // URL 변경 경로에서는 사용하지 않음 — observer가 계속 URL 변화를 감지해야 함.
+  function stopAllAnalysis() {
+    stopPickMode();
+    analysisStarted = false;
+    followupObserverStarted = false;
+    analyzeQueue.length = 0;
+    ISY.observer?.stopAll?.();
+    sendStopBg();
+  }
+
   let pickModeCleanup = null;
 
   function getVisibleRect(element) {
@@ -659,9 +676,7 @@
             analysisStarted = false;
             analyzeQueue.length = 0;
             resetPageState();
-            try {
-              chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' }).catch(() => {});
-            } catch {}
+            sendStopBg();
           }
         }
         const allResults = Array.from(ISY.state.results.values());
@@ -717,36 +732,14 @@
         return false;
       }
 
-      case 'STOP_ANALYSIS': {
-        stopPickMode();
-        analysisStarted = false;
-        followupObserverStarted = false;
-        analyzeQueue.length = 0;  // 대기 중이던 항목들 폐기
-        if (ISY.observer && ISY.observer.stopAll) {
-          ISY.observer.stopAll();
-        }
-        // background.js에서 in-flight 요청을 모두 abort. SW가 죽었거나 응답 없어도 무시.
-        try {
-          chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' })
-            .catch(() => {});
-        } catch {}
+      case 'STOP_ANALYSIS':
+        stopAllAnalysis();
         sendResponse({ ok: true });
         return false;
-      }
 
       case 'CLEAR_RESULTS':
-        stopPickMode();
-        analysisStarted = false;
-        followupObserverStarted = false;
-        analyzeQueue.length = 0;
+        stopAllAnalysis();
         resetPageState();
-        if (ISY.observer && ISY.observer.stopAll) {
-          ISY.observer.stopAll();
-        }
-        try {
-          chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' })
-            .catch(() => {});
-        } catch {}
         sendResponse({ ok: true });
         return false;
 
@@ -782,9 +775,7 @@
     analysisStarted = false;
     analyzeQueue.length = 0;
     resetPageState();
-    try {
-      chrome.runtime.sendMessage({ type: 'STOP_BG_ANALYSIS' }).catch(() => {});
-    } catch {}
+    sendStopBg();
   });
 
   let restoreTimer = null;

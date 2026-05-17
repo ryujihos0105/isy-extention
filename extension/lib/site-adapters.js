@@ -172,6 +172,24 @@
     'img.ytCoreImageHost[src*="ytimg.com"]'
   ];
 
+  const naverNewsAdapter = {
+    name: 'NAVER News',
+    imageSelectors: naverArticleSelectors,
+    videoSelectors: ['#dic_area video', '#newsct_article video', '.article_body video'],
+    textSelectors: naverTextSelectors,
+    excludeParents: naverNewsExcludes,
+    minSize: 180
+  };
+
+  const naverBlogAdapter = {
+    name: 'NAVER Blog',
+    imageSelectors: naverBlogSelectors,
+    videoSelectors: ['.se-video-resource video', '#postViewArea video'],
+    textSelectors: naverBlogTextSelectors,
+    excludeParents: naverBlogExcludes,
+    minSize: 180
+  };
+
   const adapters = {
     'instagram.com': {
       name: 'Instagram',
@@ -333,23 +351,8 @@
       }
     },
 
-    'news.naver.com': {
-      name: 'NAVER News',
-      imageSelectors: naverArticleSelectors,
-      videoSelectors: ['#dic_area video', '#newsct_article video', '.article_body video'],
-      textSelectors: naverTextSelectors,
-      excludeParents: naverNewsExcludes,
-      minSize: 180
-    },
-
-    'n.news.naver.com': {
-      name: 'NAVER News',
-      imageSelectors: naverArticleSelectors,
-      videoSelectors: ['#dic_area video', '#newsct_article video', '.article_body video'],
-      textSelectors: naverTextSelectors,
-      excludeParents: naverNewsExcludes,
-      minSize: 180
-    },
+    'news.naver.com': naverNewsAdapter,
+    'n.news.naver.com': naverNewsAdapter,
 
     'sports.news.naver.com': {
       name: 'NAVER Sports',
@@ -369,23 +372,8 @@
       minSize: 180
     },
 
-    'blog.naver.com': {
-      name: 'NAVER Blog',
-      imageSelectors: naverBlogSelectors,
-      videoSelectors: ['.se-video-resource video', '#postViewArea video'],
-      textSelectors: naverBlogTextSelectors,
-      excludeParents: naverBlogExcludes,
-      minSize: 180
-    },
-
-    'm.blog.naver.com': {
-      name: 'NAVER Blog',
-      imageSelectors: naverBlogSelectors,
-      videoSelectors: ['.se-video-resource video', '#postViewArea video'],
-      textSelectors: naverBlogTextSelectors,
-      excludeParents: naverBlogExcludes,
-      minSize: 180
-    },
+    'blog.naver.com': naverBlogAdapter,
+    'm.blog.naver.com': naverBlogAdapter,
 
     'search.naver.com': {
       name: 'NAVER Search',
