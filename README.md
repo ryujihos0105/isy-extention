@@ -71,25 +71,26 @@ pip install -r requirements.txt
 
 ### 4. 모델 가중치 배치
 
-`*.pt` 파일은 Git에 포함되지 않습니다. 팀에서 공유받은 가중치 파일을 아래 경로에 넣어주세요.  
-각 폴더 안의 `README.md` / `WEIGHTS.md` 파일에 위치 안내가 적혀 있습니다.
+`*.pt` 파일은 Git에 포함되지 않습니다. **[Hugging Face Hub](https://huggingface.co/ryujiho/isy-weights)** 에서 다운로드한 뒤 아래 경로에 넣어주세요.
 
-**이미지 모델** — `versionv9/weights/README.md` 참고
+**이미지 모델**
 
+HF Hub에서 `image/best.pt` → 로컬 경로:
 ```
 versionv9/weights/best.pt
 ```
 
-**영상 모델** — `video/WEIGHTS.md` 참고 (앙상블 7개, 폴더는 이미 생성되어 있음)
+**영상 모델** (앙상블 7개, 폴더는 이미 생성되어 있음)
 
+HF Hub에서 `video/checkpoints_.../best.pt` → 로컬 경로:
 ```
-video/checkpoints_..._ema_df_holdout_frame/best.pt
-video/checkpoints_..._ema_ff2f_holdout_frame/best.pt
-video/checkpoints_..._ema_frame/best.pt
-video/checkpoints_..._ema_img320_frame/best.pt
-video/checkpoints_..._ema_seed1337_frame/best.pt
-video/checkpoints_..._ema_seed7_frame/best.pt
-video/checkpoints_..._frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_ff2f_holdout_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_img320_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_seed1337_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_seed7_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_df_holdout_frame/best.pt
 ```
 
 ### 5. 서버 실행
@@ -261,6 +262,6 @@ localStorage.removeItem('isyDebugDetails')
 
 ## 주의사항
 
-- 모델 가중치(`*.pt`)는 `.gitignore`로 Git에 포함되지 않습니다. 팀 내 별도 채널(Google Drive, Hugging Face Hub 등)로 공유하세요.
+- 모델 가중치(`*.pt`)는 `.gitignore`로 Git에 포함되지 않습니다. [Hugging Face Hub](https://huggingface.co/ryujiho/isy-weights) 에서 다운로드하세요.
 - 서버는 `localhost:8000`에서만 요청을 수신합니다. 외부에서는 접근할 수 없습니다.
 - 확장 프로그램은 모든 URL에서 실행되므로 온라인 뱅킹 등 민감한 사이트에서 사용 시 주의하세요.
