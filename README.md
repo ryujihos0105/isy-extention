@@ -11,15 +11,18 @@
                     └─► REAL / FAKE 확률 반환
 ```
 
+---
+
 ## 구현 상태
 
 | 영역 | 상태 | 비고 |
 |------|------|------|
 | 이미지 분석 | ✅ 완성 | EfficientNet-B4 Late Fusion + FFT (versionv9) |
-| 텍스트 분석 | 🔲 엔드포인트만 준비 | `text_model/` 폴더 추가 시 활성화 |
-| 영상 분석 | 🔲 엔드포인트만 준비 | `video_model/` 폴더 추가 시 활성화 |
-| 확장 프로그램 UI | ✅ 완성 | 팝업, 배지, 페이지 스캔, 우클릭 분석 |
+| 영상 분석 | ✅ 완성 | EfficientNet-B0 앙상블 n=7 Median TTA (video_inference.py) |
+| 텍스트 분석 | 🔲 엔드포인트 준비 중 | `text_model/` 폴더 추가 시 활성화 |
+| 확장 프로그램 UI | ✅ 완성 | 팝업 모드 카드, 배지, 페이지 스캔, 우클릭 분석 |
 | Mock 서버 | ✅ 완성 | 모델 없이 UI 동작 확인 가능 |
+| 데모 플랫폼 | ✅ 완성 | YouTube 다크 테마 기반 파트너 플랫폼 시연 화면 |
 
 ---
 
@@ -71,7 +74,11 @@ pip install -r requirements.txt
 `*.pt` 파일은 Git에 포함되지 않습니다. 팀에서 공유받은 가중치 파일을 아래 경로에 넣어주세요.
 
 ```
+# 이미지 모델
 versionv9/weights/best.pt
+
+# 영상 모델 (앙상블, 총 7개 체크포인트)
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug*/best.pt
 ```
 
 ### 5. 서버 실행
@@ -102,12 +109,12 @@ python mock_server.py
 isy-extention/
 ├── extension/                   # Chrome 확장 프로그램
 │   ├── manifest.json            # MV3 설정 (권한, 스크립트 목록)
-│   ├── background.js            # Service Worker — API 호출, LRU 캐시
+│   ├── background.js            # Service Worker — API 호출, LRU 캐시(200개, TTL 30분)
 │   ├── content.js               # 페이지 스캔, 배지 표시
 │   ├── content.css
 │   ├── lib/
 │   │   ├── namespace.js         # ISY 전역 네임스페이스
-│   │   ├── site-adapters.js     # 사이트별 DOM 어댑터 (YouTube, Instagram 등)
+│   │   ├── site-adapters.js     # 사이트별 DOM 어댑터 (YouTube, Instagram, Naver)
 │   │   ├── media-extractor.js   # 이미지·영상·텍스트 후보 수집
 │   │   ├── badge-manager.js     # 배지 DOM 부착/제거
 │   │   ├── ui-manager.js        # 배지 렌더링, 상세 오버레이
@@ -121,7 +128,23 @@ isy-extention/
 │   ├── preprocess.py            # 얼굴 크롭 + FFT 방식 B 전처리
 │   ├── config.py                # 경로·하이퍼파라미터 설정
 │   └── weights/
-│       └── best.pt              # 학습된 가중치 (Git 미포함 — 별도 공유)
+│       └── best.pt              # 학습된 가중치 (Git 미포함)
+├── video_inference.py           # 영상 판별 모델 추론 (완성)
+│   └── EfficientNet-B0 앙상블 n=7, Median TTA
+├── video/                       # 영상 모델 관련 파일
+│   ├── builder.py               # 모델 빌더
+│   ├── masking.py               # 마스킹 유틸리티
+│   ├── MODEL_HANDOFF.md         # 영상 모델 인수인계 문서
+│   └── checkpoints_*/best.pt   # 앙상블 체크포인트 (Git 미포함)
+├── demo_platform/               # 시연용 데모 플랫폼 (YouTube 다크 테마)
+│   ├── disclosures.json         # 업로드 영상별 AI 공개 라벨 저장
+│   ├── uploads/                 # 업로드된 영상 파일
+│   └── static/
+│       ├── browse.html / .js    # 홈 (영상 그리드, 호버 프리뷰 + AI 라벨)
+│       ├── upload.html / .js    # 크리에이터 업로드 화면
+│       ├── watch.html / .js     # 시청자 화면 (영상 위 ISY 검증 라벨, 처음 10초)
+│       ├── utils.js             # 공통 유틸리티
+│       └── demo.css             # YouTube 다크 테마 공통 스타일
 ├── server.py                    # FastAPI 추론 서버
 ├── mock_server.py               # 테스트용 Mock 서버
 └── requirements.txt             # Python 의존성
@@ -131,20 +154,7 @@ isy-extention/
 
 ## API
 
-### Platform disclosure demo
-
-플랫폼 협약을 가정한 시연 화면입니다. 업로드 페이지에서 영상을 분석하면 서버가 분석 결과를
-`Platform Disclosure API` 결과로 저장하고, 시청자 페이지는 같은 결과를 읽어 영상 플레이어와
-설명 영역에 공개 라벨을 표시합니다.
-
-```bash
-python server.py
-```
-
-- 업로드 데모: http://localhost:8000/demo/upload
-- 시청자 데모: 업로드 완료 후 표시되는 `시청자 화면 열기` 링크
-
-### `POST /api/analyze/image`
+### 이미지 분석 — `POST /api/analyze/image`
 
 ```bash
 curl -X POST http://localhost:8000/api/analyze/image \
@@ -165,39 +175,72 @@ curl -X POST http://localhost:8000/api/analyze/image \
 }
 ```
 
-### `POST /api/analyze/text` / `POST /api/analyze/video`
+### 영상 분석 — `POST /api/analyze/video`
 
-현재 엔드포인트만 준비된 상태입니다. 각 모델 폴더(`text_model/`, `video_model/`)를 추가하면 자동으로 활성화됩니다.
+```bash
+curl -X POST http://localhost:8000/api/analyze/video \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://www.youtube.com/watch?v=VIDEO_ID", "platform_meta": {"platform": "youtube", "videoId": "VIDEO_ID"}}'
+```
+
+```json
+{
+  "url": "...",
+  "media_type": "video",
+  "fake_probability": 0.87,
+  "real_probability": 0.13,
+  "label": "FAKE",
+  "model": "efficientnet-b0-ensemble-n7-median-tta"
+}
+```
+
+### 텍스트 분석 — `POST /api/analyze/text`
+
+현재 엔드포인트만 준비된 상태입니다. `text_model/` 폴더를 추가하면 자동으로 활성화됩니다.
+
+### 데모 플랫폼
+
+플랫폼 협약을 가정한 시연 화면입니다. 업로드 페이지에서 영상을 분석하면 서버가 결과를 `Platform Disclosure API` 형태로 저장하고, 시청자 화면에서 ISY 검증 라벨로 표시합니다.
+
+```bash
+python server.py
+```
+
+| 화면 | URL |
+|------|-----|
+| 홈 (영상 그리드) | http://localhost:8000/demo/browse |
+| 크리에이터 업로드 | http://localhost:8000/demo/upload |
+| 시청자 화면 | http://localhost:8000/demo/watch/{video_id} |
 
 ---
 
 ## 새 모델 추가 방법
 
-`versionv9/`와 동일한 구조로 폴더를 만들면 됩니다.
+`versionv9/`와 동일한 구조로 폴더를 만들거나 `video_inference.py`처럼 별도 모듈로 작성합니다.
 
 ```
-text_model/          또는       video_model/
-├── model.py                    ├── model.py
-├── preprocess.py               ├── preprocess.py
-├── config.py                   ├── config.py
-└── weights/best.pt             └── weights/best.pt
+text_model/
+├── model.py
+├── preprocess.py
+├── config.py
+└── weights/best.pt
 ```
 
-그다음 `server.py`의 `_load_text_model()` 또는 `_load_video_model()` 함수를 구현하고 서버를 재시작합니다.
+그다음 `server.py`의 `_load_text_model()` 함수를 구현하고 서버를 재시작합니다.
 
 ---
 
 ## 개발자 디버그 옵션
 
-사용자용 결과 라벨에는 판정에 필요한 정보만 표시합니다. 콘텐츠 유형, 얼굴 크롭 결과, 모델명 같은 내부 분석 정보는 기본적으로 숨겨져 있습니다.
+사용자용 결과 라벨에는 판정에 필요한 정보만 표시합니다. 내부 분석 정보(콘텐츠 유형, 얼굴 크롭 결과, 모델명 등)는 기본적으로 숨겨져 있습니다.
 
-개발 중 상세 결과 오버레이에서 내부 정보를 다시 보고 싶으면 분석 대상 페이지의 DevTools 콘솔에서 아래 값을 켭니다.
+개발 중 상세 결과 오버레이에서 내부 정보를 보고 싶으면 분석 대상 페이지의 DevTools 콘솔에서 아래 값을 켭니다.
 
 ```js
 localStorage.setItem('isyDebugDetails', 'true')
 ```
 
-다시 사용자 기본 표시로 되돌리려면 아래 값을 제거합니다.
+다시 사용자 기본 표시로 되돌리려면:
 
 ```js
 localStorage.removeItem('isyDebugDetails')
