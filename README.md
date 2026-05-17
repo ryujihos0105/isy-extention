@@ -71,14 +71,25 @@ pip install -r requirements.txt
 
 ### 4. 모델 가중치 배치
 
-`*.pt` 파일은 Git에 포함되지 않습니다. 팀에서 공유받은 가중치 파일을 아래 경로에 넣어주세요.
+`*.pt` 파일은 Git에 포함되지 않습니다. 팀에서 공유받은 가중치 파일을 아래 경로에 넣어주세요.  
+각 폴더 안의 `README.md` / `WEIGHTS.md` 파일에 위치 안내가 적혀 있습니다.
+
+**이미지 모델** — `versionv9/weights/README.md` 참고
 
 ```
-# 이미지 모델
 versionv9/weights/best.pt
+```
 
-# 영상 모델 (앙상블, 총 7개 체크포인트)
-video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug*/best.pt
+**영상 모델** — `video/WEIGHTS.md` 참고 (앙상블 7개, 폴더는 이미 생성되어 있음)
+
+```
+video/checkpoints_..._ema_df_holdout_frame/best.pt
+video/checkpoints_..._ema_ff2f_holdout_frame/best.pt
+video/checkpoints_..._ema_frame/best.pt
+video/checkpoints_..._ema_img320_frame/best.pt
+video/checkpoints_..._ema_seed1337_frame/best.pt
+video/checkpoints_..._ema_seed7_frame/best.pt
+video/checkpoints_..._frame/best.pt
 ```
 
 ### 5. 서버 실행
