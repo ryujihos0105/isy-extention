@@ -174,6 +174,24 @@ text_model/          또는       video_model/
 
 ---
 
+## 개발자 디버그 옵션
+
+사용자용 결과 라벨에는 판정에 필요한 정보만 표시합니다. 콘텐츠 유형, 얼굴 크롭 결과, 모델명 같은 내부 분석 정보는 기본적으로 숨겨져 있습니다.
+
+개발 중 상세 결과 오버레이에서 내부 정보를 다시 보고 싶으면 분석 대상 페이지의 DevTools 콘솔에서 아래 값을 켭니다.
+
+```js
+localStorage.setItem('isyDebugDetails', 'true')
+```
+
+다시 사용자 기본 표시로 되돌리려면 아래 값을 제거합니다.
+
+```js
+localStorage.removeItem('isyDebugDetails')
+```
+
+---
+
 ## 주의사항
 
 - 모델 가중치(`*.pt`)는 `.gitignore`로 Git에 포함되지 않습니다. 팀 내 별도 채널(Google Drive, Hugging Face Hub 등)로 공유하세요.

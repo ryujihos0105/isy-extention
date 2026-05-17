@@ -8,11 +8,16 @@
 <body>
   <div class="container">
     <header class="header">
-      <h1>
-        <span class="brand-mark">ISY</span>
-        <span class="brand-full">I See You</span>
-      </h1>
-      <p>AI 생성 가능성을 빠르게 검토합니다.</p>
+      <div class="header-text">
+        <h1>
+          <span class="brand-mark">ISY</span>
+          <span class="brand-full">I See You</span>
+        </h1>
+        <p>AI 생성 가능성을 빠르게 검토합니다.</p>
+      </div>
+      <div class="brand-logo-stage" aria-hidden="true">
+        <img src="../icons/iseeyou.png" alt="" class="brand-logo" width="126" height="84" decoding="async">
+      </div>
     </header>
 
     <section id="adapter-info" class="adapter-info" aria-label="현재 사이트">
@@ -38,13 +43,32 @@
     </section>
 
     <div id="summary-note" class="summary-note hidden"></div>
+    <div id="watching-indicator" class="watching-indicator hidden" aria-hidden="true">
+      <span class="watching-dot"></span>
+      <span class="watching-text">새로 등장하는 콘텐츠도 계속 확인합니다</span>
+    </div>
 
     <main class="actions">
-      <button id="analyze-all-btn" class="primary" aria-label="현재 페이지의 콘텐츠 분석">
-        현재 페이지 분석
+      <div class="action-group">
+        <button id="analyze-all-btn" class="primary" aria-label="페이지의 모든 콘텐츠 분석">
+          전체 콘텐츠 분석
+        </button>
+        <span class="btn-hint">페이지에서 찾은 모든 콘텐츠를 분석</span>
+      </div>
+      <div class="action-group">
+        <button id="analyze-selected-btn" class="secondary" aria-label="선택한 콘텐츠만 분석">
+          선택해서 분석
+        </button>
+        <span class="btn-hint">파란 박스를 계속 클릭해 원하는 항목만 분석</span>
+      </div>
+      <button id="retry-failed-btn" class="secondary hidden" aria-label="분석 실패 항목 재시도" disabled>
+        실패 재시도
       </button>
-      <button id="scan-btn" class="secondary" aria-label="분석 가능한 콘텐츠 개수 확인">
-        분석 가능 항목 확인
+      <button id="clear-results-btn" class="secondary hidden" aria-label="화면의 분석 라벨 숨기기">
+        라벨 숨기기
+      </button>
+      <button id="stop-analysis-btn" class="secondary hidden" aria-label="자동 분석 중단">
+        분석 중단
       </button>
     </main>
 

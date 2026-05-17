@@ -17,16 +17,20 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "versionv9"))
 
+import time
+import threading
 import torch
 import torch.nn.functional as F
 import requests
 import traceback
+from collections import OrderedDict
 from io import BytesIO
 from PIL import Image
 from contextlib import asynccontextmanager
 from typing import Optional
-from urllib.parse import urlparse, urlunparse, parse_qs, unquote
+from urllib.parse import urlparse, urlunparse, parse_qs, unquote, urljoin
 import ipaddress
+import socket
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -138,6 +142,40 @@ _BLOCKED_HOSTS = (
     "192.168.",
 )
 
+MAX_IMAGE_BYTES = 30 * 1024 * 1024  # 30MB
+MAX_REDIRECTS = 3
+
+# 결과 메모리 캐시.
+# 동일 이미지에 대한 재요청을 추론 큐에 다시 태우지 않는다.
+# 클라이언트(background.js) 캐시가 SW 종료/탭 분리에서 날아가도 서버 측에서 흡수.
+_RESULT_CACHE_MAX = 200
+_RESULT_CACHE_TTL_SEC = 30 * 60
+_result_cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
+_result_cache_lock = threading.Lock()
+
+
+def _cache_get(key: str) -> Optional[dict]:
+    now = time.monotonic()
+    with _result_cache_lock:
+        entry = _result_cache.get(key)
+        if entry is None:
+            return None
+        ts, result = entry
+        if now - ts > _RESULT_CACHE_TTL_SEC:
+            _result_cache.pop(key, None)
+            return None
+        _result_cache.move_to_end(key)
+        return result
+
+
+def _cache_put(key: str, result: dict) -> None:
+    with _result_cache_lock:
+        _result_cache[key] = (time.monotonic(), result)
+        _result_cache.move_to_end(key)
+        while len(_result_cache) > _RESULT_CACHE_MAX:
+            _result_cache.popitem(last=False)
+
+
 def _assert_safe_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
@@ -147,13 +185,32 @@ def _assert_safe_url(url: str) -> None:
         raise ValueError("호스트를 파싱할 수 없습니다")
     if any(host.startswith(b) for b in _BLOCKED_HOSTS):
         raise ValueError(f"내부/사설 주소로의 요청은 허용되지 않습니다: {host}")
+
+    # 호스트가 IP 리터럴이면 즉시 검증
     try:
-        addr = ipaddress.ip_address(host)
-        if not addr.is_global:
-            raise ValueError(f"글로벌 주소가 아닙니다: {host}")
+        addr_literal = ipaddress.ip_address(host)
+        if (addr_literal.is_private or addr_literal.is_loopback
+                or addr_literal.is_link_local or addr_literal.is_reserved
+                or addr_literal.is_multicast or addr_literal.is_unspecified):
+            raise ValueError(f"내부/사설 IP: {addr_literal}")
+        return
     except ValueError as exc:
-        if "글로벌 주소" in str(exc) or "내부" in str(exc):
+        if "내부" in str(exc):
             raise
+
+    # DNS 해석 후 모든 결과 IP 검증 (DNS rebinding 방지)
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        raise ValueError(f"DNS 해석 실패: {host}") from e
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+            raise ValueError(f"내부/사설 주소로 해석됨: {host} → {addr}")
 
 
 def resolve_image_url(url: str, page_url: Optional[str] = None) -> tuple:
@@ -177,7 +234,13 @@ def resolve_image_url(url: str, page_url: Optional[str] = None) -> tuple:
     if "pstatic.net" in parsed.netloc and "dthumb" in parsed.path:
         params = parse_qs(parsed.query)
         if "src" in params:
-            actual = unquote(params["src"][0]).strip('"')
+            actual = params["src"][0].strip('"')
+            for _ in range(3):
+                decoded = unquote(actual)
+                if decoded == actual:
+                    break
+                actual = decoded
+            actual = actual.strip('"')
             return actual, "https://www.naver.com/"
         return url, "https://www.naver.com/"
 
@@ -189,21 +252,68 @@ def resolve_image_url(url: str, page_url: Optional[str] = None) -> tuple:
 def fetch_image(url: str, page_url: Optional[str] = None) -> Image.Image:
     _assert_safe_url(url)
     resolved_url, referer = resolve_image_url(url, page_url)
-    _assert_safe_url(resolved_url)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": referer,
     }
-    resp = requests.get(resolved_url, headers=headers, timeout=10)
-    resp.raise_for_status()
 
-    content_type = resp.headers.get("content-type", "")
-    if "text/html" in content_type:
-        raise ValueError(f"이미지가 아닌 응답 반환됨 (content-type: {content_type})")
+    # 명시적 리다이렉트 추적 — 매 hop마다 _assert_safe_url 재검증 (SSRF 방지)
+    current_url = resolved_url
+    resp = None
+    for hop in range(MAX_REDIRECTS + 1):
+        _assert_safe_url(current_url)
+        resp = requests.get(
+            current_url,
+            headers=headers,
+            timeout=12,
+            stream=True,
+            allow_redirects=False,
+        )
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("location")
+            resp.close()
+            if not location:
+                raise ValueError("리다이렉트에 location 헤더 없음")
+            current_url = urljoin(current_url, location)
+            continue
+        break
+    else:
+        if resp is not None:
+            resp.close()
+        raise ValueError(f"리다이렉트 횟수 초과 ({MAX_REDIRECTS}회)")
 
-    img = Image.open(BytesIO(resp.content)).convert("RGB")
+    try:
+        resp.raise_for_status()
+
+        content_type = resp.headers.get("content-type", "").lower()
+        if not content_type.startswith("image/"):
+            raise ValueError(f"이미지가 아닌 응답 (content-type: {content_type})")
+
+        content_length = resp.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > MAX_IMAGE_BYTES:
+                    raise ValueError(f"이미지 크기 초과: {content_length} bytes")
+            except (TypeError, ValueError):
+                pass  # 헤더 파싱 실패는 스트림 검증에 위임
+
+        # 청크 단위 스트림 다운로드 + 누적 크기 검증
+        buf = BytesIO()
+        total = 0
+        for chunk in resp.iter_content(64 * 1024):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > MAX_IMAGE_BYTES:
+                raise ValueError(f"이미지 크기 초과 (스트림 중 {total} bytes)")
+            buf.write(chunk)
+        buf.seek(0)
+    finally:
+        resp.close()
+
+    img = Image.open(buf).convert("RGB")
     img.load()
     return img
 
@@ -231,10 +341,22 @@ def run_inference(img_pil: Image.Image) -> dict:
     }
 
 
+# sync def 핸들러: FastAPI가 threadpool에서 실행 → blocking I/O(fetch_image)와 GIL 밖 추론을
+# 진짜 병렬로 처리. async def로 두면 메인 이벤트 루프가 fetch/추론 동안 점유돼 다른 요청이 막힌다.
 @app.post("/api/analyze/image")
-async def analyze_image(req: AnalyzeRequest):
+def analyze_image(req: AnalyzeRequest):
     if not req.url:
         raise HTTPException(status_code=400, detail="url 필드가 필요합니다")
+
+    # 캐시 키: 정규화된 실제 다운로드 URL. dthumb/sqp 변형이 동일 원본으로 수렴.
+    try:
+        cache_key, _ = resolve_image_url(req.url, req.page_url)
+    except Exception:
+        cache_key = req.url
+
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return {"url": req.url, "media_type": "image", "from_cache": True, **cached}
 
     try:
         img_pil = fetch_image(req.url, req.page_url)
@@ -251,6 +373,7 @@ async def analyze_image(req: AnalyzeRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"추론 실패: {e}")
 
+    _cache_put(cache_key, result)
     return {"url": req.url, "media_type": "image", **result}
 
 
