@@ -51,7 +51,7 @@ class LateFusionModel(nn.Module):
         self.rgb_branch = make_efficientnet_b4(in_channels=3, num_classes=0)
         self.fft_branch = make_efficientnet_b4(in_channels=3, num_classes=0)
 
-        feat_dim = self.rgb_branch.num_features  # EfficientNet-B4: 1792
+        feat_dim: int = self.rgb_branch.num_features  # type: ignore[attr-defined]  # EfficientNet-B4: 1792
         self.fc = nn.Sequential(
             nn.Linear(feat_dim * 2, 512),  # RGB(1792) + FFT(1792) = 3584 → 512
             nn.ReLU(),

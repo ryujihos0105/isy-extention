@@ -7,5 +7,5 @@ versionv9/weights/
 └── best.pt   ← 이 파일이 필요합니다
 ```
 
-파일은 팀 내 공유 채널(Google Drive 등)에서 받을 수 있습니다.  
-파일을 넣은 뒤 `python server.py` 로 서버를 실행하면 됩니다.
+파일은 **[Hugging Face Hub](https://huggingface.co/ryujiho/isy-weights)** 에서 다운로드할 수 있습니다.  
+HF Hub의 `image/best.pt` 를 이 폴더에 `best.pt` 로 저장한 뒤 `python server.py` 로 서버를 실행하면 됩니다.

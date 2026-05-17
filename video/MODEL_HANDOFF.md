@@ -16,7 +16,7 @@ A 7-model ensemble of EfficientNet-B0-based classifiers for short-video real vs 
 
 ## 2. Model architecture (identical for all 7 except `image_size`)
 
-All seven checkpoints share the exact same network definition (from `iseeyou/models/builder.py`):
+All seven checkpoints share the exact same network definition (from `video/builder.py`):
 
 ```python
 import timm
@@ -55,9 +55,9 @@ Each `.pt` checkpoint is a dict with at least:
 
 ## 3. The seven checkpoints
 
-Files are at: `outputs/checkpoints_<NAME>_frame/best.pt` (each ~46 MB).
+Files are at: `video/checkpoints_<NAME>_frame/best.pt` (each ~46 MB).
 
-| # | label | NAME (`outputs/checkpoints_<NAME>_frame/best.pt`) | image_size | seed | train data | val EMA F1 |
+| # | label | NAME (`video/checkpoints_<NAME>_frame/best.pt`) | image_size | seed | train data | val EMA F1 |
 |--:|---|---|:-:|:-:|---|:-:|
 | 1 | `robustaug`              | `protocol_youtube_dataset_plus_local_videoonly_clean_robustaug` | 224 | 42 | full clean manifest, no EMA | 0.7788 (raw) |
 | 2 | `robustaug+EMA`          | `protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema` | 224 | 42 | full clean manifest | 0.7634 |
@@ -280,13 +280,13 @@ from torchvision import transforms
 
 # 7 model bundle: list of (name, image_size, ckpt_path)
 MODELS = [
-    ("robustaug",     224, "outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_frame/best.pt"),
-    ("ema",           224, "outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_frame/best.pt"),
-    ("ff2f_holdout",  224, "outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_ff2f_holdout_frame/best.pt"),
-    ("seed1337",      224, "outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_seed1337_frame/best.pt"),
-    ("seed7",         224, "outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_seed7_frame/best.pt"),
-    ("df_holdout",    224, "outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_df_holdout_frame/best.pt"),
-    ("img320",        320, "outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_img320_frame/best.pt"),
+    ("robustaug",     224, "video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_frame/best.pt"),
+    ("ema",           224, "video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_frame/best.pt"),
+    ("ff2f_holdout",  224, "video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_ff2f_holdout_frame/best.pt"),
+    ("seed1337",      224, "video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_seed1337_frame/best.pt"),
+    ("seed7",         224, "video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_seed7_frame/best.pt"),
+    ("df_holdout",    224, "video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_df_holdout_frame/best.pt"),
+    ("img320",        320, "video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_img320_frame/best.pt"),
 ]
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD  = (0.229, 0.224, 0.225)
@@ -371,7 +371,7 @@ def predict_video(video_path, models):
             "verdict": "GENERATED" if final[1] > 0.5 else "REAL"}
 ```
 
-For the actual production-quality `FrameClassifier` definition, copy `iseeyou/models/builder.py` from this repo so state_dict keys match exactly.
+For the actual production-quality `FrameClassifier` definition, copy `video/builder.py` from this repo so state_dict keys match exactly.
 
 ---
 
@@ -401,15 +401,15 @@ For each `best.pt`, you can verify it loaded correctly by running on a known ref
 Send these files together:
 
 ```
-outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_frame/best.pt
-outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_frame/best.pt
-outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_ff2f_holdout_frame/best.pt
-outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_seed1337_frame/best.pt
-outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_seed7_frame/best.pt
-outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_df_holdout_frame/best.pt
-outputs/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_img320_frame/best.pt
-iseeyou/models/builder.py               # the FrameClassifier definition
-iseeyou/utils/masking.py                # the text-mask implementation (apply_band_mask_np / apply_text_mask_np)
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_ff2f_holdout_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_seed1337_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_seed7_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_df_holdout_frame/best.pt
+video/checkpoints_protocol_youtube_dataset_plus_local_videoonly_clean_robustaug_ema_img320_frame/best.pt
+video/builder.py               # the FrameClassifier definition
+video/masking.py                # the text-mask implementation (apply_band_mask_np / apply_text_mask_np)
 MODEL_HANDOFF.md                        # this file
 ```
 
@@ -419,7 +419,8 @@ If they want a single deployable Python file with no `iseeyou/` import, the `Fra
 
 ---
 
-## 13. Contact / source
+## 13. Source
 
-Code: https://github.com/jeehun3020/ISEEYOU_MODEL  
-Detailed phase-by-phase progression (with all eval JSONs and intermediate decisions): `outputs/protocol/youtube_dataset_plus_local_videoonly_clean/phase_{a..f}_*.md`.
+이 문서의 경로 및 모듈명은 이 레포 기준으로 업데이트되어 있습니다.  
+레포: https://github.com/ryujihos0105/isy-extention  
+원본 모델 학습 코드: https://github.com/jeehun3020/ISEEYOU_MODEL
