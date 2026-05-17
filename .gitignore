@@ -19,7 +19,10 @@ env/
 *.onnx
 *.pkl
 *.joblib
-video/checkpoints_*/
+video/checkpoints_*/*.pt
+video/checkpoints_*/*.pth
+video/checkpoints_*/history.json
+video/checkpoints_*/last.pt
 video/__MACOSX/
 
 # Logs / temporary files
