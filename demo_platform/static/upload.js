@@ -4,8 +4,9 @@ const fileName = document.getElementById('file-name');
 const submitBtn = document.getElementById('submit-btn');
 const statusEl = document.getElementById('status');
 const resultCard = document.getElementById('result-card');
+const dropZone = document.querySelector('.yt-drop-zone');
 
-const { levelClass } = window.ISY_DEMO;
+const { levelClass, initHeader, flashActive } = window.ISY_DEMO;
 
 function setStatus(text, mode) {
   statusEl.textContent = text;
@@ -20,6 +21,7 @@ function resultTitle(disclosure) {
 
 function renderResult(payload) {
   const disclosure = payload.disclosure;
+  const watchUrl = payload.watch_url || `/demo/watch/${encodeURIComponent(disclosure.video_id)}`;
   const title = resultTitle(disclosure);
   const cls = levelClass(disclosure.level);
   resultCard.className = `yt-result-card ${cls}`;
@@ -41,8 +43,8 @@ function renderResult(payload) {
           <div class="yt-gauge-fill" style="width:${disclosure.percent}%"></div>
         </div>
       </div>
-      <p class="yt-result-note">DEMO 시청자에게 영상 시작 시 ISY 검증 라벨이 노출됩니다.</p>
-      <a class="yt-watch-link" href="/demo/browse" target="_blank" rel="noreferrer">
+      <p class="yt-result-note">영상 재생 시작 후 10초 동안, 좌측 상단에 ISY 검증 라벨이 시청자에게 표시됩니다.</p>
+      <a class="yt-watch-link" href="${watchUrl}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
         시청자 입장에서 보기
       </a>
@@ -59,11 +61,10 @@ async function parseError(response) {
   }
 }
 
-fileInput.addEventListener('change', () => {
-  const file = fileInput.files?.[0];
-  if (fileName) fileName.textContent = file ? file.name : '';
-  if (file) uploadSelectedFile();
-});
+function updateSubmitEnabled() {
+  const hasFile = !!fileInput.files?.[0];
+  submitBtn.disabled = !hasFile;
+}
 
 async function uploadSelectedFile() {
   const file = fileInput.files?.[0];
@@ -85,11 +86,70 @@ async function uploadSelectedFile() {
   } catch (err) {
     setStatus(err.message || '업로드 실패', 'error');
   } finally {
-    submitBtn.disabled = false;
+    updateSubmitEnabled();
   }
 }
 
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files?.[0];
+  if (fileName) fileName.textContent = file ? file.name : '';
+  updateSubmitEnabled();
+  if (file) uploadSelectedFile();
+});
+
 form.addEventListener('submit', event => {
   event.preventDefault();
+  if (!fileInput.files?.[0]) return;
   uploadSelectedFile();
 });
+
+if (dropZone) {
+  ['dragenter', 'dragover'].forEach(evt => {
+    dropZone.addEventListener(evt, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.add('is-dragover');
+    });
+  });
+  ['dragleave', 'dragend', 'drop'].forEach(evt => {
+    dropZone.addEventListener(evt, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.remove('is-dragover');
+    });
+  });
+  dropZone.addEventListener('drop', e => {
+    const files = e.dataTransfer?.files;
+    if (!files || !files.length) return;
+    const file = files[0];
+    if (!file.type.startsWith('video/')) {
+      setStatus('동영상 파일만 업로드할 수 있습니다.', 'error');
+      return;
+    }
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('change'));
+  });
+}
+
+let studioNavRestoreTimer = null;
+document.querySelectorAll('.yt-studio-nav-item[data-studio-nav]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.yt-studio-nav-item').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    flashActive(btn, 320);
+
+    const prevText = statusEl.textContent;
+    const prevClass = statusEl.className;
+    setStatus('데모 환경에서는 해당 메뉴가 비활성화되어 있습니다.', 'idle');
+    clearTimeout(studioNavRestoreTimer);
+    studioNavRestoreTimer = setTimeout(() => {
+      statusEl.textContent = prevText;
+      statusEl.className = prevClass;
+    }, 1500);
+  });
+});
+
+initHeader();
+updateSubmitEnabled();
