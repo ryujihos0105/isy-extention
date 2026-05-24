@@ -52,7 +52,18 @@
                 const prevSrc = target.dataset.isyBadgedSrc || '';
                 const nextSrc = target.currentSrc || target.src || '';
                 if (prevSrc && nextSrc && prevSrc !== nextSrc) {
-                  window.ISY.badges.detach(target);
+                  // ytimg.com 썸네일은 호버 미리보기 시 같은 영상 ID의 다른 품질/포맷으로
+                  // src가 바뀐다. 영상 ID가 같으면 배지를 유지하고 src만 갱신.
+                  // 영상 ID가 다르면 가상화로 다른 영상이 재사용된 것이므로 배지를 탈착.
+                  // ytimg.com URL 형식: /vi/, /vi_webp/, /an_webp/ 등 타입 다음에 영상 ID가 온다.
+                  const ytIdOf = url => { const m = url.match(/ytimg\.com\/[^/]+\/([^/?#]+)\//); return m ? m[1] : null; };
+                  const prevId = ytIdOf(prevSrc);
+                  const nextId = ytIdOf(nextSrc);
+                  if (prevId && nextId && prevId === nextId) {
+                    target.dataset.isyBadgedSrc = nextSrc;
+                  } else {
+                    window.ISY.badges.detach(target);
+                  }
                 }
               }
               hasNewMedia = true;

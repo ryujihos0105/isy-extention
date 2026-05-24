@@ -196,6 +196,7 @@
       showDetailOverlay(targetElement, result, itemKey);
     }
     addClickAndKeydown(badge, open);
+    badge.addEventListener('mouseover', e => e.stopPropagation());
 
     const ok = window.ISY.badges.attach(targetElement, badge);
     if (!ok) delete targetElement.dataset.isyBadged;

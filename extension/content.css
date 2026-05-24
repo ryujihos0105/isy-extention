@@ -29,6 +29,25 @@
   pointer-events: none !important;
 }
 
+/* ISY 배지가 있는 YouTube 카드 내 hover preview가 배지를 덮지 않도록.
+   pointer-events 차단으로 배지 클릭을 보호하고, z-index로 배지를 preview 위에 유지. */
+ytd-thumbnail:has(.isy-badge) ytd-moving-thumbnail-renderer,
+ytd-rich-item-renderer:has(.isy-badge) ytd-moving-thumbnail-renderer,
+ytd-video-renderer:has(.isy-badge) ytd-moving-thumbnail-renderer,
+ytd-compact-video-renderer:has(.isy-badge) ytd-moving-thumbnail-renderer,
+yt-lockup-view-model:has(.isy-badge) ytd-moving-thumbnail-renderer,
+yt-thumbnail-view-model:has(.isy-badge) ytd-moving-thumbnail-renderer {
+  pointer-events: none !important;
+}
+
+/* 검색 결과 컨테이너 ytd-search가 z-index:0으로 stacking context를 만들어 그 안의 배지를
+   가둔다(배지 z:999998이 ytd-search 내부에서만 유효). 그 결과 전역 미리보기 #video-preview가
+   배지를 paint상 덮어버린다. 홈처럼(배지가 루트 컨텍스트) 배지가 미리보기 위로 올라오도록
+   stacking context만 해제. position은 그대로라 레이아웃에는 영향 없음. */
+ytd-search {
+  z-index: auto !important;
+}
+
 .isy-badge:focus-visible,
 .isy-text-badge:focus-visible,
 .isy-close:focus-visible,
@@ -41,6 +60,12 @@
   background: var(--isy-low);
   color: white;
   animation: isy-pop 0.4s ease-out;
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+
+.isy-badge.isy-low:hover {
+  box-shadow: 0 2px 14px rgba(15, 118, 110, 0.7);
+  transform: scale(1.04);
 }
 
 @keyframes isy-pop {

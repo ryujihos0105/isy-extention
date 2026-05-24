@@ -284,19 +284,43 @@ def download_youtube_video(video_id: str) -> Path:
     outtmpl = str(tmpdir / f"{_safe_filename(video_id)}.%(ext)s")
     url = f"https://www.youtube.com/watch?v={video_id}"
 
-    options = {
+    options_base = {
         "format": "bv*[height<=480][ext=mp4]/bv*[height<=480]/b[height<=480][ext=mp4]/b[height<=480]/worst",
         "outtmpl": outtmpl,
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
-        "socket_timeout": 20,
-        "retries": 1,
+        "socket_timeout": 30,
+        "retries": 2,
         "continuedl": False,
     }
+    # player_client 시도 시 포맷 선택을 넓혀서 "format not available" 방지
+    _permissive_format = "best[height<=480]/best"
+    # YouTube bot-check bypass 순서:
+    # android_vr → android → ios (클라이언트 스푸핑, 쿠키 불필요)
+    # → Chrome cookies → plain
+    attempts = [
+        {**options_base, "format": _permissive_format,
+         "extractor_args": {"youtube": {"player_client": ["android_vr"]}}},
+        {**options_base, "format": _permissive_format,
+         "extractor_args": {"youtube": {"player_client": ["android"]}}},
+        {**options_base, "format": _permissive_format,
+         "extractor_args": {"youtube": {"player_client": ["ios"]}}},
+        {**options_base, "cookiesfrombrowser": ("chrome",)},
+        options_base,
+    ]
     try:
-        with YoutubeDL(options) as ydl:
-            ydl.download([url])
+        last_exc: Exception | None = None
+        for attempt_opts in attempts:
+            try:
+                with YoutubeDL(attempt_opts) as ydl:
+                    ydl.download([url])
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+        if last_exc is not None:
+            raise last_exc
 
         candidates = [path for path in tmpdir.iterdir() if path.is_file()]
         if not candidates:

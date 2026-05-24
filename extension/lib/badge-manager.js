@@ -9,6 +9,7 @@
 
   const activeBadges = new Map();
   const containerBadges = new WeakMap();
+  const captureListeners = new WeakMap();
   let carouselMutationObserver = null;
 
   function isInstagram() {
@@ -101,6 +102,33 @@
     stack.push({ target, badge });
     containerBadges.set(container, stack);
     activeBadges.set(target, { badge, container });
+
+    // 컨테이너에 캡처 단계 pointerdown·click 리스너를 한 번만 설치.
+    // pointerdown: 배지 좌표를 가로채 합성 click을 배지에 전달.
+    // click: 같은 제스처에서 오는 네이티브 click을 차단해 배지 핸들러가 두 번 실행(열자마자 닫힘)되지 않도록 막음.
+    // isTrusted=false인 합성 이벤트는 무시 — 배지 자체 핸들러는 정상 동작.
+    if (!captureListeners.has(container)) {
+      const listener = (e) => {
+        if (!e.isTrusted) return;
+        const stack = containerBadges.get(container) || [];
+        for (const { badge: b } of stack) {
+          if (!b.isConnected || b.classList.contains('isy-badge-hidden')) continue;
+          const rect = b.getBoundingClientRect();
+          if (e.clientX >= rect.left && e.clientX <= rect.right &&
+              e.clientY >= rect.top && e.clientY <= rect.bottom) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            if (e.type === 'pointerdown') {
+              b.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }));
+            }
+            break;
+          }
+        }
+      };
+      container.addEventListener('pointerdown', listener, true);
+      container.addEventListener('click', listener, true);
+      captureListeners.set(container, listener);
+    }
 
     if (isInstagram()) {
       // 캐러셀 슬라이드 전환 시 aria-hidden 변화를 즉시 감지
@@ -239,6 +267,12 @@
     for (const container of touchedContainers) {
       containerBadges.set(container, []);
       restoreContainerPosition(container);
+      const listener = captureListeners.get(container);
+      if (listener) {
+        container.removeEventListener('pointerdown', listener, true);
+        container.removeEventListener('click', listener, true);
+        captureListeners.delete(container);
+      }
     }
     carouselMutationObserver?.disconnect();
     carouselMutationObserver = null;
@@ -265,6 +299,15 @@
     }
     if (target.dataset) delete target.dataset.isyBadged;
     restoreContainerPosition(container);
+    const remainingStack = containerBadges.get(container) || [];
+    if (remainingStack.length === 0) {
+      const listener = captureListeners.get(container);
+      if (listener) {
+        container.removeEventListener('pointerdown', listener, true);
+        container.removeEventListener('click', listener, true);
+        captureListeners.delete(container);
+      }
+    }
     return true;
   }
 
