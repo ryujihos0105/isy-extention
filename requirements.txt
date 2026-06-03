@@ -19,6 +19,7 @@ opencv-python==4.10.0.84
 timm==1.0.9
 insightface==0.7.3
 onnxruntime==1.19.2
+open-clip-torch>=2.20.0   # versionv12 (TripleFusion: RGB+FFT+CLIP) 브랜치용
 
 # ── 네트워크 ──────────────────────────────────────────────────────────────────
 requests==2.32.3
