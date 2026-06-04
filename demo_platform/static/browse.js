@@ -32,6 +32,7 @@ function createCard(disclosure) {
         <span>${labelText(disclosure)}</span>
       </div>
       <div class="yt-card-duration" hidden></div>
+      <button class="yt-card-delete" type="button" title="이 영상 삭제" aria-label="이 영상 삭제">✕</button>
     </div>
     <div class="yt-card-meta">
       <div class="yt-channel-avatar">${CHANNEL_INITIAL}</div>
@@ -61,7 +62,30 @@ function createCard(disclosure) {
   });
   card.addEventListener('click', () => { location.href = `/demo/watch/${disclosure.video_id}`; });
 
+  const deleteBtn = card.querySelector('.yt-card-delete');
+  deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deleteVideo(disclosure, deleteBtn);
+  });
+
   return card;
+}
+
+async function deleteVideo(disclosure, btn) {
+  const title = disclosure.filename || '이 영상';
+  if (!confirm(`'${title}'을(를) 삭제할까요?\n영상 파일과 ISY 검증 기록이 함께 삭제됩니다.`)) return;
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/api/platform/disclosures/${encodeURIComponent(disclosure.video_id)}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok && res.status !== 404) throw new Error();
+    state.all = state.all.filter(d => d.video_id !== disclosure.video_id);
+    applyFilters();
+  } catch {
+    if (btn) btn.disabled = false;
+    alert('영상 삭제에 실패했습니다. 서버 상태를 확인해주세요.');
+  }
 }
 
 function applyFilters() {

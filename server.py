@@ -161,7 +161,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://studio.youtube.com"],
     allow_origin_regex=r"chrome-extension://.*",
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
@@ -249,6 +249,28 @@ def _put_platform_disclosure(video_id: str, disclosure: dict) -> None:
         data = _load_platform_disclosures()
         data[video_id] = disclosure
         _save_platform_disclosures(data)
+
+
+def _delete_platform_disclosure(video_id: str) -> bool:
+    """disclosure 메타 + 저장된 영상 파일을 함께 삭제한다.
+
+    메타가 없으면 False. 메타에 stored_filename이 있으면 uploads/의 파일도 제거하되,
+    파일이 이미 없어도(메타만 남은 경우) 메타 제거는 정상 처리한다.
+    """
+    with _platform_disclosure_lock:
+        data = _load_platform_disclosures()
+        disclosure = data.pop(video_id, None)
+        if disclosure is None:
+            return False
+        _save_platform_disclosures(data)
+
+    stored_filename = (disclosure or {}).get("stored_filename")
+    if stored_filename:
+        try:
+            (DEMO_UPLOAD_DIR / stored_filename).unlink(missing_ok=True)
+        except Exception:
+            traceback.print_exc()
+    return True
 
 
 def _result_level(fake_probability: float) -> str:
@@ -705,6 +727,14 @@ def get_platform_disclosure(video_id: str):
     if not disclosure:
         raise HTTPException(status_code=404, detail="platform disclosure not found")
     return disclosure
+
+
+@app.delete("/api/platform/disclosures/{video_id}")
+def delete_platform_disclosure(video_id: str):
+    deleted = _delete_platform_disclosure(video_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="platform disclosure not found")
+    return {"ok": True, "video_id": video_id}
 
 
 @app.get("/api/platform/videos/{video_id}")
