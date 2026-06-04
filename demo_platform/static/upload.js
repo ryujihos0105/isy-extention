@@ -1,12 +1,29 @@
 const form = document.getElementById('upload-form');
 const fileInput = document.getElementById('video-file');
-const fileName = document.getElementById('file-name');
 const submitBtn = document.getElementById('submit-btn');
 const statusEl = document.getElementById('status');
 const resultCard = document.getElementById('result-card');
-const dropZone = document.querySelector('.yt-drop-zone');
+const dropZone = document.getElementById('drop-zone');
+const preview = document.getElementById('preview');
+const previewStage = document.getElementById('preview-stage');
+const previewVideo = document.getElementById('preview-video');
+const previewName = document.getElementById('preview-name');
+const previewBadge = document.getElementById('preview-badge');
+const previewBadgeText = document.getElementById('preview-badge-text');
+const changeBtn = document.getElementById('change-btn');
+const stepsEl = document.getElementById('steps');
 
-const { levelClass, initHeader, flashActive } = window.ISY_DEMO;
+const { levelClass, labelText, initHeader, flashActive } = window.ISY_DEMO;
+
+const STEPS = [
+  '영상 프레임 추출',
+  '시각 패턴(RGB) 분석',
+  '주파수·CLIP 교차 검증',
+  'ISY 검증 라벨 생성',
+];
+
+let previewUrl = null;
+let stepTimer = null;
 
 function setStatus(text, mode) {
   statusEl.textContent = text;
@@ -19,28 +36,102 @@ function resultTitle(disclosure) {
   return 'AI 생성 가능성 낮음';
 }
 
+/* ─── 미리보기 전환 ─── */
+function showPreview(file) {
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = URL.createObjectURL(file);
+  previewVideo.src = previewUrl;
+  previewVideo.play().catch(() => {});
+  previewName.textContent = file.name;
+
+  dropZone.classList.add('hidden');
+  preview.classList.remove('hidden');
+  previewBadge.hidden = true;
+  previewStage.className = 'yt-preview-stage';
+}
+
+/* ─── 분석 스텝 연출 ─── */
+function buildSteps() {
+  stepsEl.innerHTML = STEPS.map((label, i) => `
+    <li class="yt-step" data-step="${i}">
+      <span class="yt-step-icon">
+        <svg class="yt-step-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <span class="yt-step-text">${label}</span>
+    </li>
+  `).join('');
+}
+
+function setStepState(index, state) {
+  const li = stepsEl.querySelector(`[data-step="${index}"]`);
+  if (li) li.className = `yt-step ${state}`;
+}
+
+function startSteps() {
+  buildSteps();
+  stepsEl.classList.remove('hidden');
+  let i = 0;
+  setStepState(0, 'active');
+  clearInterval(stepTimer);
+  stepTimer = setInterval(() => {
+    setStepState(i, 'done');
+    i += 1;
+    if (i < STEPS.length) {
+      setStepState(i, 'active');
+    } else {
+      clearInterval(stepTimer);
+    }
+  }, 720);
+}
+
+function finishSteps() {
+  clearInterval(stepTimer);
+  STEPS.forEach((_, i) => setStepState(i, 'done'));
+}
+
+function resetSteps() {
+  clearInterval(stepTimer);
+  stepsEl.classList.add('hidden');
+  stepsEl.innerHTML = '';
+}
+
+/* ─── 숫자 카운트업 ─── */
+function animateCount(el, target, duration = 1200) {
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = `${Math.round(target * eased)}%`;
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ─── 결과 렌더 (원형 게이지) ─── */
+const RING_R = 52;
+const RING_C = 2 * Math.PI * RING_R;
+
 function renderResult(payload) {
   const disclosure = payload.disclosure;
   const watchUrl = payload.watch_url || `/demo/watch/${encodeURIComponent(disclosure.video_id)}`;
-  const title = resultTitle(disclosure);
   const cls = levelClass(disclosure.level);
+
   resultCard.className = `yt-result-card ${cls}`;
   resultCard.innerHTML = `
     <div class="yt-result-header">
       <span class="isy-dot"></span>
-      ISY 검증 결과 · ${title}
+      ISY 검증 결과 · ${resultTitle(disclosure)}
     </div>
     <div class="yt-result-body">
-      <div class="yt-score">
-        <div>
-          <div class="yt-score-pct">${disclosure.percent}%</div>
-          <div class="yt-score-label">AI 생성 가능성</div>
-        </div>
-      </div>
-      <div>
-        <div class="yt-gauge-header"><span>0%</span><span>100%</span></div>
-        <div class="yt-gauge-track">
-          <div class="yt-gauge-fill" style="width:${disclosure.percent}%"></div>
+      <div class="yt-ring">
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="yt-ring-bg" cx="60" cy="60" r="${RING_R}"/>
+          <circle class="yt-ring-fill" cx="60" cy="60" r="${RING_R}"
+            style="stroke-dasharray:${RING_C};stroke-dashoffset:${RING_C}"/>
+        </svg>
+        <div class="yt-ring-center">
+          <div class="yt-ring-pct" id="ring-pct">0%</div>
+          <div class="yt-ring-label">AI 생성 가능성</div>
         </div>
       </div>
       <p class="yt-result-note">영상 재생 시작 후 10초 동안, 좌측 상단에 ISY 검증 라벨이 시청자에게 표시됩니다.</p>
@@ -50,6 +141,18 @@ function renderResult(payload) {
       </a>
     </div>
   `;
+
+  // 영상 위 검증 라벨 박기
+  previewStage.className = `yt-preview-stage ${cls}`;
+  previewBadgeText.textContent = labelText(disclosure);
+  previewBadge.hidden = false;
+
+  requestAnimationFrame(() => {
+    const fill = resultCard.querySelector('.yt-ring-fill');
+    const pct = resultCard.querySelector('#ring-pct');
+    fill.style.strokeDashoffset = String(RING_C * (1 - disclosure.percent / 100));
+    animateCount(pct, disclosure.percent);
+  });
 }
 
 async function parseError(response) {
@@ -62,8 +165,7 @@ async function parseError(response) {
 }
 
 function updateSubmitEnabled() {
-  const hasFile = !!fileInput.files?.[0];
-  submitBtn.disabled = !hasFile;
+  submitBtn.disabled = !fileInput.files?.[0];
 }
 
 async function uploadSelectedFile() {
@@ -72,7 +174,10 @@ async function uploadSelectedFile() {
 
   submitBtn.disabled = true;
   resultCard.className = 'yt-result-card hidden';
+  previewBadge.hidden = true;
+  previewStage.className = 'yt-preview-stage scanning';
   setStatus('영상 분석 및 공개 라벨 등록 중', 'busy');
+  startSteps();
 
   const data = new FormData();
   data.append('file', file, file.name);
@@ -81,21 +186,31 @@ async function uploadSelectedFile() {
     const response = await fetch('/api/platform/demo-upload', { method: 'POST', body: data });
     if (!response.ok) throw new Error(await parseError(response));
     const payload = await response.json();
+    finishSteps();
+    previewStage.classList.remove('scanning');
     setStatus('시청자 공개 라벨 등록 완료', 'done');
     renderResult(payload);
   } catch (err) {
+    resetSteps();
+    previewStage.className = 'yt-preview-stage';
     setStatus(err.message || '업로드 실패', 'error');
   } finally {
     updateSubmitEnabled();
   }
 }
 
-fileInput.addEventListener('change', () => {
+function handleFileSelected() {
   const file = fileInput.files?.[0];
-  if (fileName) fileName.textContent = file ? file.name : '';
+  if (!file) return;
+  resetSteps();
+  showPreview(file);
   updateSubmitEnabled();
-  if (file) uploadSelectedFile();
-});
+  uploadSelectedFile();
+}
+
+fileInput.addEventListener('change', handleFileSelected);
+
+changeBtn.addEventListener('click', () => fileInput.click());
 
 form.addEventListener('submit', event => {
   event.preventDefault();
@@ -103,35 +218,33 @@ form.addEventListener('submit', event => {
   uploadSelectedFile();
 });
 
-if (dropZone) {
-  ['dragenter', 'dragover'].forEach(evt => {
-    dropZone.addEventListener(evt, e => {
-      e.preventDefault();
-      e.stopPropagation();
-      dropZone.classList.add('is-dragover');
-    });
+['dragenter', 'dragover'].forEach(evt => {
+  dropZone.addEventListener(evt, e => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.add('is-dragover');
   });
-  ['dragleave', 'dragend', 'drop'].forEach(evt => {
-    dropZone.addEventListener(evt, e => {
-      e.preventDefault();
-      e.stopPropagation();
-      dropZone.classList.remove('is-dragover');
-    });
+});
+['dragleave', 'dragend', 'drop'].forEach(evt => {
+  dropZone.addEventListener(evt, e => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('is-dragover');
   });
-  dropZone.addEventListener('drop', e => {
-    const files = e.dataTransfer?.files;
-    if (!files || !files.length) return;
-    const file = files[0];
-    if (!file.type.startsWith('video/')) {
-      setStatus('동영상 파일만 업로드할 수 있습니다.', 'error');
-      return;
-    }
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    fileInput.files = dt.files;
-    fileInput.dispatchEvent(new Event('change'));
-  });
-}
+});
+dropZone.addEventListener('drop', e => {
+  const files = e.dataTransfer?.files;
+  if (!files || !files.length) return;
+  const file = files[0];
+  if (!file.type.startsWith('video/')) {
+    setStatus('동영상 파일만 업로드할 수 있습니다.', 'error');
+    return;
+  }
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  fileInput.files = dt.files;
+  fileInput.dispatchEvent(new Event('change'));
+});
 
 let studioNavRestoreTimer = null;
 document.querySelectorAll('.yt-studio-nav-item[data-studio-nav]').forEach(btn => {

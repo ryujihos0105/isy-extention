@@ -75,23 +75,57 @@
       <div class="yt-upload-grid">
         <div class="yt-upload-col-left">
           <form id="upload-form">
-            <label class="yt-drop-zone" for="video-file">
-              <input id="video-file" name="file" type="file" accept="video/*" required>
+            <input id="video-file" name="file" type="file" accept="video/*" class="yt-file-input" required>
+
+            <label class="yt-drop-zone" for="video-file" id="drop-zone">
               <svg class="yt-drop-icon" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect x="2" y="6" width="15" height="12" rx="2"/>
                 <path d="m17 10 5-3v10l-5-3V10z"/>
               </svg>
               <p class="yt-drop-title">동영상을 끌어다 놓거나 선택하세요</p>
               <p class="yt-drop-sub">파일을 추가하면 자동으로 ISY 검증을 진행하고<br>시청자 공개 라벨을 등록합니다.</p>
-              <p id="file-name" class="yt-drop-file"></p>
               <span class="yt-select-btn">파일 선택</span>
             </label>
-            <button id="submit-btn" class="yt-reanalyze-btn" type="submit" disabled>분석 다시 실행</button>
+
+            <div class="yt-preview hidden" id="preview">
+              <div class="yt-preview-stage" id="preview-stage">
+                <video id="preview-video" muted loop playsinline></video>
+                <div class="yt-scan" id="scan-overlay" aria-hidden="true">
+                  <div class="yt-scan-grid"></div>
+                  <div class="yt-scan-line"></div>
+                  <span class="yt-scan-corner tl"></span>
+                  <span class="yt-scan-corner tr"></span>
+                  <span class="yt-scan-corner bl"></span>
+                  <span class="yt-scan-corner br"></span>
+                </div>
+                <div class="yt-preview-badge" id="preview-badge" hidden>
+                  <span class="isy-dot"></span>
+                  <span id="preview-badge-text"></span>
+                </div>
+              </div>
+              <div class="yt-preview-foot">
+                <span class="yt-preview-name" id="preview-name"></span>
+                <button type="button" class="yt-preview-change" id="change-btn">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                  </svg>
+                  다른 영상
+                </button>
+              </div>
+            </div>
+
+            <button id="submit-btn" class="yt-reanalyze-btn" type="submit" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+              </svg>
+              분석 다시 실행
+            </button>
           </form>
         </div>
 
         <aside class="yt-upload-col-right">
           <div id="status" class="yt-status">영상 선택 대기 중</div>
+          <ol class="yt-steps hidden" id="steps"></ol>
           <div id="result-card" class="yt-result-card hidden"></div>
         </aside>
       </div>

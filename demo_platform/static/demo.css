@@ -686,7 +686,7 @@ button.yt-nav-item {
 .yt-upload-col-left,
 .yt-upload-col-right { min-width: 0; display: flex; flex-direction: column; }
 
-/* 좌측: 드롭존이 컬럼 높이를 가득 채우도록 */
+/* 좌측: 드롭존/미리보기가 컬럼 높이를 가득 채우도록 */
 .yt-upload-col-left #upload-form { flex: 1; display: flex; flex-direction: column; }
 .yt-upload-col-left .yt-drop-zone {
   flex: 1;
@@ -695,6 +695,7 @@ button.yt-nav-item {
   align-items: center;
   justify-content: center;
 }
+.yt-upload-col-left .yt-preview { flex: 1; }
 
 /* 우측: 상태 바 + 결과 카드가 컬럼 높이를 채움 */
 .yt-upload-col-right > .yt-status { margin-top: 0; }
@@ -736,7 +737,8 @@ button.yt-nav-item {
 .yt-drop-zone:hover        { border-color: #3ea6ff; background: rgba(62,166,255,0.04); }
 .yt-drop-zone:focus-within { outline: 2px solid rgba(62,166,255,0.4); outline-offset: 2px; border-color: #3ea6ff; }
 .yt-drop-zone.is-dragover  { border-color: #3ea6ff; background: rgba(62,166,255,0.10); }
-.yt-drop-zone input        { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.yt-drop-zone.hidden       { display: none; }
+.yt-file-input             { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 .yt-drop-icon  { color: #3ea6ff; margin-bottom: 16px; }
 .yt-drop-title { font-size: 18px; color: var(--text); font-weight: 400; margin-bottom: 8px; }
@@ -849,6 +851,237 @@ button.yt-nav-item {
 }
 .yt-watch-link:hover { background: #cc0000; }
 
+/* ─── 영상 미리보기 + 스캔 연출 ─── */
+.yt-preview { display: flex; flex-direction: column; }
+.yt-preview.hidden { display: none; }
+
+.yt-preview-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: box-shadow 0.3s, border-color 0.3s;
+}
+.yt-preview-stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 분석 중 스테이지 강조 */
+.yt-preview-stage.scanning {
+  border-color: rgba(62,166,255,0.6);
+  box-shadow: 0 0 0 1px rgba(62,166,255,0.4), 0 0 28px rgba(62,166,255,0.25);
+}
+
+/* 스캔 오버레이 */
+.yt-scan {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+.yt-preview-stage.scanning .yt-scan { opacity: 1; }
+
+.yt-scan-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(62,166,255,0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(62,166,255,0.12) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(circle at 50% 50%, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 30%, transparent 75%);
+}
+
+.yt-scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #3ea6ff, transparent);
+  box-shadow: 0 0 14px 3px rgba(62,166,255,0.55);
+  animation: isy-scan 2.1s cubic-bezier(0.65,0,0.35,1) infinite;
+}
+
+.yt-scan-corner {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(62,166,255,0.85);
+  animation: isy-pulse 1.4s ease-in-out infinite;
+}
+.yt-scan-corner.tl { top: 12px; left: 12px; border-right: none; border-bottom: none; border-radius: 4px 0 0 0; }
+.yt-scan-corner.tr { top: 12px; right: 12px; border-left: none; border-bottom: none; border-radius: 0 4px 0 0; }
+.yt-scan-corner.bl { bottom: 12px; left: 12px; border-right: none; border-top: none; border-radius: 0 0 0 4px; }
+.yt-scan-corner.br { bottom: 12px; right: 12px; border-left: none; border-top: none; border-radius: 0 0 4px 0; }
+
+/* 분석 완료 후 영상 위 검증 라벨 */
+.yt-preview-badge {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.80);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+  animation: isy-fadein 0.3s ease-out;
+}
+.yt-preview-badge[hidden] { display: none; }
+.level-high      .yt-preview-badge { box-shadow: 0 0 0 1px rgba(249,115,22,0.55), 0 0 16px rgba(249,115,22,0.30); }
+.level-uncertain .yt-preview-badge { box-shadow: 0 0 0 1px rgba(234,179,8,0.55),  0 0 16px rgba(234,179,8,0.28);  }
+.level-low       .yt-preview-badge { box-shadow: 0 0 0 1px rgba(20,184,166,0.55), 0 0 16px rgba(20,184,166,0.28); }
+
+.yt-preview-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+.yt-preview-name {
+  font-size: 13px;
+  color: var(--subtext);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.yt-preview-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.yt-preview-change:hover { background: rgba(255,255,255,0.08); }
+
+/* ─── 분석 진행 스텝 ─── */
+.yt-steps {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  animation: isy-fadein 0.3s ease-out;
+}
+.yt-steps.hidden { display: none; }
+
+.yt-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--subtext);
+  opacity: 0.5;
+  transition: opacity 0.3s, color 0.3s;
+}
+.yt-step.active,
+.yt-step.done { opacity: 1; }
+.yt-step.active .yt-step-text { color: var(--text); font-weight: 500; }
+.yt-step.done  .yt-step-text  { color: var(--text); }
+
+.yt-step-icon {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f0f0f;
+  transition: background 0.3s, border-color 0.3s;
+}
+/* 진행 중: 회전 스피너 */
+.yt-step.active .yt-step-icon {
+  border-color: rgba(62,166,255,0.3);
+  border-top-color: #3ea6ff;
+  animation: isy-spin 0.7s linear infinite;
+}
+/* 완료: 채워진 체크 */
+.yt-step.done .yt-step-icon {
+  background: #3ea6ff;
+  border-color: #3ea6ff;
+  animation: isy-pop 0.3s ease-out;
+}
+.yt-step-check { opacity: 0; transition: opacity 0.2s; }
+.yt-step.done .yt-step-check { opacity: 1; }
+
+/* ─── 원형 게이지 결과 ─── */
+.yt-ring {
+  position: relative;
+  width: 184px;
+  height: 184px;
+  margin: 4px auto 0;
+}
+.yt-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.yt-ring-bg {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 11;
+}
+.yt-ring-fill {
+  fill: none;
+  stroke-width: 11;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.22,1,0.36,1);
+}
+.level-high      .yt-ring-fill { stroke: var(--high); filter: drop-shadow(0 0 6px rgba(249,115,22,0.5)); }
+.level-uncertain .yt-ring-fill { stroke: var(--uncertain); filter: drop-shadow(0 0 6px rgba(234,179,8,0.5)); }
+.level-low       .yt-ring-fill { stroke: var(--low); filter: drop-shadow(0 0 6px rgba(20,184,166,0.5)); }
+
+.yt-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.yt-ring-pct {
+  font-size: 46px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.level-high      .yt-ring-pct { color: var(--high); }
+.level-uncertain .yt-ring-pct { color: var(--uncertain); }
+.level-low       .yt-ring-pct { color: var(--low); }
+.yt-ring-label { font-size: 12px; color: var(--subtext); letter-spacing: 0.3px; }
+
 /* ─── Animations ─── */
 @keyframes isy-fadein {
   from { opacity: 0; transform: translateY(6px); }
@@ -858,6 +1091,23 @@ button.yt-nav-item {
 @keyframes isy-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.55; }
+}
+
+@keyframes isy-scan {
+  0%   { top: 4%;  opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: 96%; opacity: 0; }
+}
+
+@keyframes isy-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes isy-pop {
+  0%   { transform: scale(0.5); }
+  60%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
 }
 
 /* ─── Responsive ─── */
