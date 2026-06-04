@@ -25,3 +25,10 @@ open-clip-torch>=2.20.0   # versionv12 (TripleFusion: RGB+FFT+CLIP) 브랜치용
 requests==2.32.3
 yt-dlp==2025.4.30
 python-multipart==0.0.20
+# 백신/프록시 TLS 검사 환경에서 open_clip 가중치(huggingface.co) 다운로드 SSL 검증용.
+# Windows 인증서 저장소를 사용하게 한다. Python 버전에 맞는 것 하나만 설치:
+#   Python >= 3.10:  truststore>=0.9.0        (server.py 가 자동 주입)
+#   Python <  3.10:  pip-system-certs         (.pth 로 requests 자동 패치, 코드 불필요)
+# 설치 시 SSL 에 막히면:  pip install <pkg> --trusted-host pypi.org --trusted-host files.pythonhosted.org
+truststore>=0.9.0 ; python_version >= "3.10"
+pip-system-certs ; python_version <  "3.10"

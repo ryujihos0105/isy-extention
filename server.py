@@ -6,14 +6,14 @@ ISY 실제 추론 서버
   POST /api/analyze/video  → 영상 모델 (video_model/ 폴더 추가 시 활성화)
 
 이미지 모델 전환:
-  아래 IMAGE_MODEL_VERSION 한 줄만 "v9" 또는 "v12"로 바꾸고 서버 재시작.
+  아래 IMAGE_MODEL_VERSION 한 줄만 "v3" / "v9" / "v12" 로 바꾸고 서버 재시작.
   sys.path / import / 가중치 경로 / run_inference 분기 모두 자동 처리.
 
 새 이미지 모델 버전 추가:
   1. versionvNN/ 폴더를 기존과 동일한 구조로 생성
      (model.py / config.py / preprocess.py / weights/best.pt)
   2. _IMAGE_MODEL_REGISTRY 에 한 줄 추가
-  3. run_inference 의 튜플 길이 분기 확인 (3개=v9형 / 4개=v12형)
+  3. run_inference 의 튜플 길이 분기 확인 (2개=v3형 / 3개=v9형 / 4개=v12형)
 
 실행: python server.py
 """
@@ -21,16 +21,29 @@ ISY 실제 추론 서버
 import sys
 import os
 
+# CLIP 가중치(open_clip)는 최초 1회 huggingface.co 에서 다운로드된다.
+# 백신/프록시의 TLS 검사 환경에서는 certifi 번들로 인증서 검증이 실패하므로,
+# 설치돼 있으면 Windows 인증서 저장소를 사용하도록 truststore 를 주입한다.
+# (인증서가 이미 정상이면 무해. 반드시 open_clip 을 import 하는 preprocess 보다 먼저 실행)
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except Exception:
+    pass
+
 # ─── 이미지 모델 버전 선택 ─────────────────────────────────
-# "v9" (LateFusion: RGB+FFT) 또는 "v12" (TripleFusion: RGB+FFT+CLIP)
-IMAGE_MODEL_VERSION = "v12"
+# "v9"  (LateFusion: RGB+FFT)
+# "v12" (TripleFusion: RGB+FFT+CLIP)
+# "v3"  (CLIP-only: CLIP ViT-L-14 임베딩 → Linear sigmoid, predict.py/tunmbs.pt 와 동일)
+IMAGE_MODEL_VERSION = "v3"
 # ───────────────────────────────────────────────────────────
 
 # force_cpu=True 인 버전은 CUDA가 있어도 이미지 모델을 CPU로 로드/추론한다.
 # v12(TripleFusion+CLIP)는 GPU VRAM을 초과(OOM)하므로 CPU로 강제.
 _IMAGE_MODEL_REGISTRY = {
-    "v9":  {"folder": "versionv9",  "label": "versionv9-fftB",         "force_cpu": False},
+    "v9":  {"folder": "versionv9",  "label": "versionv9-fftB",          "force_cpu": False},
     "v12": {"folder": "versionv12", "label": "versionv12-tripleFusion", "force_cpu": True},
+    "v3":  {"folder": "versionv3",  "label": "versionv3-clipViTL14",    "force_cpu": True},
 }
 _image_meta           = _IMAGE_MODEL_REGISTRY[IMAGE_MODEL_VERSION]
 _IMAGE_MODEL_FOLDER   = _image_meta["folder"]
@@ -494,9 +507,14 @@ def fetch_image(url: str, page_url: Optional[str] = None) -> Image.Image:
 def run_inference(img_pil: Image.Image) -> dict:
     assert _image_model is not None and _image_device is not None, "이미지 모델이 로드되지 않았습니다"
 
-    # v9: (x_rgb, x_fft, crop_status) 3개 / v12: (x_rgb, x_fft, x_clip, crop_status) 4개
+    # v3:  (x_clip, crop_status) 2개 — 단일 입력(CLIP 임베딩) 모델
+    # v9:  (x_rgb, x_fft, crop_status) 3개
+    # v12: (x_rgb, x_fft, x_clip, crop_status) 4개
     out = preprocess_image(img_pil)
-    if len(out) == 3:
+    if len(out) == 2:
+        x_single, crop_status = out
+        model_inputs = (x_single.to(_image_device),)
+    elif len(out) == 3:
         x_rgb, x_fft, crop_status = out
         model_inputs = (x_rgb.to(_image_device), x_fft.to(_image_device))
     else:
