@@ -7,8 +7,8 @@
   if (!window.ISY) return;
 
   const activeOverlays = new WeakMap();
-  // 0.4~0.6 구간은 모델 신뢰도가 낮은 "애매" 영역으로 별도 표기.
-  const HIGH_THRESHOLD = 0.6;
+  // 0.4~0.7 구간은 모델 신뢰도가 낮은 "애매" 영역으로 별도 표기.
+  const HIGH_THRESHOLD = 0.7;
   const LOW_THRESHOLD = 0.4;
 
   const MEDIA_TYPE_LABELS = { image: '이미지', video: '영상', text: '텍스트' };
@@ -294,7 +294,7 @@
               <div class="isy-gauge-threshold-high" aria-hidden="true"></div>
             </div>
             <div class="isy-gauge-scale" aria-hidden="true">
-              <span>0%</span><span>40%</span><span>60%</span><span>100%</span>
+              <span>0%</span><span>40%</span><span>70%</span><span>100%</span>
             </div>
           </div>
           ${renderDebugDetails(result, adapterName)}

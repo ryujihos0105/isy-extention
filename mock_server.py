@@ -302,7 +302,7 @@ def _put_platform_disclosure(video_id: str, disclosure: dict) -> None:
 
 
 def _result_level(fake_probability: float) -> str:
-    if fake_probability >= 0.6:
+    if fake_probability >= 0.7:
         return "high"
     if fake_probability >= 0.4:
         return "uncertain"
