@@ -16,10 +16,12 @@ const stepsEl = document.getElementById('steps');
 const { levelClass, labelText, initHeader, flashActive } = window.ISY_DEMO;
 
 const STEPS = [
-  '영상 프레임 추출',
-  '시각 패턴(RGB) 분석',
-  '주파수·CLIP 교차 검증',
-  'ISY 검증 라벨 생성',
+  { label: '영상 프레임 추출', meta: '균등 간격 6프레임 샘플링' },
+  { label: '자막·텍스트 영역 마스킹', meta: '상·하단 오버레이 노이즈 제거' },
+  { label: '시각 패턴(RGB) 분석', meta: 'EfficientNet-B0 딥러닝 추론' },
+  { label: '좌우 반전 교차 검증', meta: 'Flip TTA 이중 확인' },
+  { label: '7개 모델 앙상블 판정', meta: 'n=7 · median 통합' },
+  { label: 'ISY 검증 라벨 생성', meta: '신뢰도 가중 종합' },
 ];
 
 let previewUrl = null;
@@ -52,12 +54,15 @@ function showPreview(file) {
 
 /* ─── 분석 스텝 연출 ─── */
 function buildSteps() {
-  stepsEl.innerHTML = STEPS.map((label, i) => `
+  stepsEl.innerHTML = STEPS.map((step, i) => `
     <li class="yt-step" data-step="${i}">
       <span class="yt-step-icon">
         <svg class="yt-step-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
       </span>
-      <span class="yt-step-text">${label}</span>
+      <span class="yt-step-body">
+        <span class="yt-step-text">${step.label}</span>
+        <span class="yt-step-meta">${step.meta}</span>
+      </span>
     </li>
   `).join('');
 }
@@ -67,26 +72,26 @@ function setStepState(index, state) {
   if (li) li.className = `yt-step ${state}`;
 }
 
+// 앞 단계를 순차적으로 체크하고, 마지막 단계가 진행 중(active)인 시점에 resolve.
+// 마지막 단계는 실제 응답을 받은 뒤 호출부에서 done 처리 → 빈 대기 시간 없이 결과로 이어짐.
 function startSteps() {
   buildSteps();
   stepsEl.classList.remove('hidden');
-  let i = 0;
-  setStepState(0, 'active');
-  clearInterval(stepTimer);
-  stepTimer = setInterval(() => {
-    setStepState(i, 'done');
-    i += 1;
-    if (i < STEPS.length) {
+  return new Promise(resolve => {
+    let i = 0;
+    setStepState(0, 'active');
+    clearInterval(stepTimer);
+    stepTimer = setInterval(() => {
+      if (i >= STEPS.length - 1) {
+        clearInterval(stepTimer);
+        resolve();
+        return;
+      }
+      setStepState(i, 'done');
+      i += 1;
       setStepState(i, 'active');
-    } else {
-      clearInterval(stepTimer);
-    }
-  }, 720);
-}
-
-function finishSteps() {
-  clearInterval(stepTimer);
-  STEPS.forEach((_, i) => setStepState(i, 'done'));
+    }, 560);
+  });
 }
 
 function resetSteps() {
@@ -177,7 +182,7 @@ async function uploadSelectedFile() {
   previewBadge.hidden = true;
   previewStage.className = 'yt-preview-stage scanning';
   setStatus('영상 분석 및 공개 라벨 등록 중', 'busy');
-  startSteps();
+  const stepsDone = startSteps();
 
   const data = new FormData();
   data.append('file', file, file.name);
@@ -186,7 +191,10 @@ async function uploadSelectedFile() {
     const response = await fetch('/api/platform/demo-upload', { method: 'POST', body: data });
     if (!response.ok) throw new Error(await parseError(response));
     const payload = await response.json();
-    finishSteps();
+    // 앞 단계 애니메이션이 끝날 때까지 기다린 뒤, 마지막 단계에 ✓ 를 찍고 결과 표시
+    await stepsDone;
+    setStepState(STEPS.length - 1, 'done');
+    await new Promise(resolve => setTimeout(resolve, 450));
     previewStage.classList.remove('scanning');
     setStatus('시청자 공개 라벨 등록 완료', 'done');
     renderResult(payload);
