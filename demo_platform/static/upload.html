@@ -72,23 +72,29 @@
     <main class="yt-studio-main">
       <h1 class="yt-studio-page-title">동영상 업로드</h1>
 
-      <form id="upload-form">
-        <label class="yt-drop-zone" for="video-file">
-          <input id="video-file" name="file" type="file" accept="video/*" required>
-          <svg class="yt-drop-icon" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="2" y="6" width="15" height="12" rx="2"/>
-            <path d="m17 10 5-3v10l-5-3V10z"/>
-          </svg>
-          <p class="yt-drop-title">동영상을 끌어다 놓거나 선택하세요</p>
-          <p class="yt-drop-sub">파일을 추가하면 자동으로 ISY 검증을 진행하고<br>시청자 공개 라벨을 등록합니다.</p>
-          <p id="file-name" class="yt-drop-file"></p>
-          <span class="yt-select-btn">파일 선택</span>
-        </label>
-        <button id="submit-btn" class="yt-reanalyze-btn" type="submit" disabled>분석 다시 실행</button>
-      </form>
+      <div class="yt-upload-grid">
+        <div class="yt-upload-col-left">
+          <form id="upload-form">
+            <label class="yt-drop-zone" for="video-file">
+              <input id="video-file" name="file" type="file" accept="video/*" required>
+              <svg class="yt-drop-icon" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2" y="6" width="15" height="12" rx="2"/>
+                <path d="m17 10 5-3v10l-5-3V10z"/>
+              </svg>
+              <p class="yt-drop-title">동영상을 끌어다 놓거나 선택하세요</p>
+              <p class="yt-drop-sub">파일을 추가하면 자동으로 ISY 검증을 진행하고<br>시청자 공개 라벨을 등록합니다.</p>
+              <p id="file-name" class="yt-drop-file"></p>
+              <span class="yt-select-btn">파일 선택</span>
+            </label>
+            <button id="submit-btn" class="yt-reanalyze-btn" type="submit" disabled>분석 다시 실행</button>
+          </form>
+        </div>
 
-      <div id="status" class="yt-status">영상 선택 대기 중</div>
-      <div id="result-card" class="yt-result-card hidden"></div>
+        <aside class="yt-upload-col-right">
+          <div id="status" class="yt-status">영상 선택 대기 중</div>
+          <div id="result-card" class="yt-result-card hidden"></div>
+        </aside>
+      </div>
     </main>
   </div>
 

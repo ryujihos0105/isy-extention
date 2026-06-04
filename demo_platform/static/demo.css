@@ -644,9 +644,50 @@ button.yt-nav-item {
 .yt-studio-main {
   flex: 1;
   min-width: 0;
-  padding: 32px 40px 60px;
-  max-width: 840px;
+  padding: 32px 48px 60px;
+  max-width: 1700px;
 }
+
+/* 업로드 2열 레이아웃: 좌측 영상 삽입칸 / 우측 분석 상태·결과 */
+.yt-upload-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: stretch;
+  /* 헤더 + 본문 패딩 + 제목을 제외한 남은 세로 공간을 채움 (스크롤 방지) */
+  min-height: calc(100vh - 210px);
+}
+.yt-upload-col-left,
+.yt-upload-col-right { min-width: 0; display: flex; flex-direction: column; }
+
+/* 좌측: 드롭존이 컬럼 높이를 가득 채우도록 */
+.yt-upload-col-left #upload-form { flex: 1; display: flex; flex-direction: column; }
+.yt-upload-col-left .yt-drop-zone {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 우측: 상태 바 + 결과 카드가 컬럼 높이를 채움 */
+.yt-upload-col-right > .yt-status { margin-top: 0; }
+.yt-upload-col-right > .yt-result-card {
+  margin-top: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.yt-upload-col-right .yt-result-body {
+  flex: 1;
+  align-content: center;
+  gap: 28px;
+  padding: 32px;
+}
+.yt-upload-col-right .yt-score-pct  { font-size: 72px; }
+.yt-upload-col-right .yt-gauge-track { height: 10px; }
+.yt-upload-col-right .yt-result-note { font-size: 14px; }
+.yt-upload-col-right .yt-watch-link  { height: 44px; font-size: 15px; padding: 0 24px; }
 
 .yt-studio-page-title {
   font-size: 24px;
@@ -800,6 +841,12 @@ button.yt-nav-item {
 
 @media (max-width: 1100px) {
   .yt-related-col { display: none; }
+}
+
+@media (max-width: 980px) {
+  .yt-upload-grid { grid-template-columns: 1fr; gap: 20px; min-height: 0; }
+  .yt-upload-col-right > .yt-status { margin-top: 4px; }
+  .yt-upload-col-right .yt-score-pct { font-size: 56px; }
 }
 
 @media (max-width: 860px) {
